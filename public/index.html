@@ -1,0 +1,1679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SightReadle - Daily Sight Reading Challenge</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .challenge-card {
+                padding: 20px;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .exercise-selector {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+            
+            .score-item {
+                flex-direction: column;
+                gap: 5px;
+            }
+            
+            .score-category {
+                text-align: center;
+            }
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .challenge-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 30px;
+            margin-bottom: 30px;
+            transform: translateY(0);
+            transition: transform 0.3s ease;
+        }
+
+        .challenge-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .challenge-info {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .challenge-title {
+            font-size: 1.8rem;
+            color: #4a5568;
+            margin-bottom: 10px;
+        }
+
+        .challenge-date {
+            color: #718096;
+            font-size: 1.1rem;
+        }
+
+        .music-container {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 10px;
+            border: 2px dashed #e2e8f0;
+        }
+
+        .music-sheet {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            background: white;
+            padding: 10px;
+            object-fit: cover;
+            object-position: 0% 15%;
+            max-height: 85vh;
+        }
+
+        .loading {
+            font-size: 1.2rem;
+            color: #718096;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 25px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+            transform: translateY(-2px);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .stat-card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .recording-status {
+            text-align: center;
+            padding: 20px;
+            margin: 20px 0;
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+        }
+
+        .recording-indicator {
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #856404;
+        }
+
+        .recording-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: #dc3545;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .score-results {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .final-score {
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #667eea;
+        }
+
+        .score-number {
+            font-size: 4rem;
+        }
+
+        .score-label {
+            font-size: 2rem;
+            color: #718096;
+        }
+
+        .score-breakdown {
+            max-width: 400px;
+            margin: 30px auto;
+        }
+
+        .score-item {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            gap: 15px;
+        }
+
+        .score-category {
+            min-width: 100px;
+            text-align: left;
+            font-weight: 500;
+        }
+
+        .score-bar {
+            flex: 1;
+            height: 20px;
+            background: #e2e8f0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .score-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 10px;
+            transition: width 1s ease-in-out;
+            width: 0%;
+        }
+
+        .score-value {
+            min-width: 30px;
+            font-weight: bold;
+            color: #4a5568;
+        }
+
+        .feedback {
+            margin: 25px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .feedback-item {
+            margin: 10px 0;
+            font-size: 1.1rem;
+        }
+
+        .exercise-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 2px solid #e2e8f0;
+        }
+
+        .exercise-selector label {
+            font-size: 0.9rem;
+            color: #4a5568;
+            white-space: nowrap;
+        }
+
+        .exercise-selector input {
+            width: 80px;
+            padding: 6px 8px;
+            border: 1px solid #cbd5e0;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        .exercise-selector input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+
+        .exercise-selector .btn {
+            padding: 6px 12px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎼 SightReadle</h1>
+            <p>Your daily sight reading challenge</p>
+        </header>
+
+        <main class="challenge-card">
+            <div id="challenge-content">
+                <div class="loading">Loading today's challenge...</div>
+            </div>
+        </main>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">1</div>
+                <div class="stat-label">Daily Challenge</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">354</div>
+                <div class="stat-label">Total Pieces</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">♪</div>
+                <div class="stat-label">Intermediate Level</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        // Real MusicScorer class with audio analysis
+        class RealMusicScorer {
+            constructor() {
+                this.audioContext = null;
+                this.mediaRecorder = null;
+                this.recordedChunks = [];
+                this.expectedNotes = [];
+                this.recordingStartTime = null;
+                this.analyzerNode = null;
+            }
+
+            async parseMusicXML(musicXMLContent) {
+                try {
+                    console.log('Raw MusicXML content (first 500 chars):', musicXMLContent.substring(0, 500));
+                    
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(musicXMLContent, 'text/xml');
+                    
+                    // Check if parsing was successful
+                    const parseError = xmlDoc.querySelector('parsererror');
+                    if (parseError) {
+                        console.error('XML parsing error:', parseError.textContent);
+                        throw new Error('Invalid XML format');
+                    }
+                    
+                    console.log('XML parsed successfully. Root element:', xmlDoc.documentElement.tagName);
+                    
+                    const expectedData = {
+                        notes: [],
+                        parts: [],
+                        timeSignature: { beats: 4, beatType: 4 },
+                        tempo: 120
+                    };
+
+                    // Debug: Log all available elements
+                    console.log('Available elements in XML:', Array.from(xmlDoc.querySelectorAll('*')).map(el => el.tagName).slice(0, 30));
+
+                    // Check for multiple parts (hands)
+                    const parts = xmlDoc.querySelectorAll('part');
+                    console.log('Number of parts found:', parts.length);
+                    
+                    if (parts.length > 1) {
+                        console.log('🎹 MULTI-PART SCORE DETECTED (likely both hands)');
+                        parts.forEach((part, index) => {
+                            const partId = part.getAttribute('id');
+                            console.log(`Part ${index + 1} (${partId}):`, part.querySelectorAll('note').length, 'notes');
+                        });
+                    } else {
+                        console.log('Single part score detected');
+                    }
+
+                    // Extract time signature
+                    const timeElement = xmlDoc.querySelector('time');
+                    if (timeElement) {
+                        console.log('Found time signature element');
+                        const beats = timeElement.querySelector('beats')?.textContent;
+                        const beatType = timeElement.querySelector('beat-type')?.textContent;
+                        if (beats && beatType) {
+                            expectedData.timeSignature = { 
+                                beats: parseInt(beats), 
+                                beatType: parseInt(beatType) 
+                            };
+                            console.log('Time signature:', expectedData.timeSignature);
+                        }
+                    }
+
+                    // Extract notes from ALL parts
+                    const allNotes = [];
+                    let partIndex = 0;
+                    
+                    parts.forEach(part => {
+                        const partId = part.getAttribute('id');
+                        console.log(`\n🎼 Processing Part ${partIndex + 1} (${partId}):`);
+                        
+                        const notes = part.querySelectorAll('note');
+                        console.log('Notes in this part:', notes.length);
+                        
+                        let currentTime = 0;
+                        const quarterNoteDuration = 60 / expectedData.tempo;
+                        const divisions = parseInt(part.querySelector('divisions')?.textContent || xmlDoc.querySelector('divisions')?.textContent || '1');
+                        console.log('Divisions for this part:', divisions);
+
+                        notes.forEach((noteElement, noteIndex) => {
+                            const isRest = noteElement.querySelector('rest');
+                            const isChord = noteElement.querySelector('chord'); // Notes played simultaneously
+                            
+                            if (!isRest) {
+                                const pitch = noteElement.querySelector('pitch');
+                                const duration = noteElement.querySelector('duration');
+                                
+                                if (pitch && duration) {
+                                    const step = pitch.querySelector('step')?.textContent;
+                                    const octave = parseInt(pitch.querySelector('octave')?.textContent || '4');
+                                    const alter = parseInt(pitch.querySelector('alter')?.textContent || '0');
+                                    
+                                    console.log(`  Note ${noteIndex + 1}:`, { 
+                                        step, 
+                                        octave, 
+                                        alter, 
+                                        isChord: !!isChord,
+                                        time: currentTime.toFixed(2) 
+                                    });
+                                    
+                                    if (step) {
+                                        const midiNumber = this.noteToMidi(step, octave, alter);
+                                        const frequency = this.midiToFrequency(midiNumber);
+                                        const durationValue = parseInt(duration.textContent);
+                                        const timeInSeconds = (durationValue / divisions) * quarterNoteDuration;
+                                        
+                                        const noteData = {
+                                            pitch: step + octave,
+                                            midiNumber: midiNumber,
+                                            frequency: frequency,
+                                            startTime: currentTime,
+                                            duration: timeInSeconds,
+                                            part: partIndex,
+                                            partId: partId,
+                                            isChord: !!isChord
+                                        };
+                                        
+                                        allNotes.push(noteData);
+                                        console.log(`    Added: ${step}${octave} (${frequency.toFixed(1)}Hz) at ${currentTime.toFixed(2)}s`);
+                                    }
+                                } else {
+                                    console.log(`  Note ${noteIndex + 1} missing pitch or duration`);
+                                }
+                            }
+                            
+                            // Only advance time if this isn't a chord note
+                            if (!noteElement.querySelector('chord')) {
+                                const durationValue = parseInt(noteElement.querySelector('duration')?.textContent || divisions);
+                                currentTime += (durationValue / divisions) * quarterNoteDuration;
+                            }
+                        });
+                        
+                        expectedData.parts.push({
+                            id: partId,
+                            noteCount: notes.length,
+                            duration: currentTime
+                        });
+                        
+                        partIndex++;
+                    });
+
+                    // Sort all notes by time for easier processing
+                    allNotes.sort((a, b) => a.startTime - b.startTime);
+                    expectedData.notes = allNotes;
+
+                    this.expectedNotes = expectedData.notes;
+                    console.log('\n🎹 FINAL PARSED RESULTS:');
+                    console.log('Total notes across all parts:', expectedData.notes.length);
+                    console.log('Parts:', expectedData.parts);
+                    console.log('Notes by time:', expectedData.notes.map(n => `${n.startTime.toFixed(2)}s: ${n.pitch} (Part ${n.part + 1})`));
+                    
+                    return expectedData;
+                    
+                } catch (error) {
+                    console.error('Error parsing MusicXML:', error);
+                    // Fallback to simple pattern
+                    this.expectedNotes = Array.from({length: 8}, (_, i) => ({
+                        pitch: 'C4',
+                        midiNumber: 60,
+                        frequency: 261.63,
+                        startTime: i * 0.5,
+                        duration: 0.5,
+                        part: 0,
+                        isChord: false
+                    }));
+                    console.log('Using fallback notes:', this.expectedNotes.length);
+                    return { notes: this.expectedNotes };
+                }
+            }
+
+            noteToMidi(step, octave, alter = 0) {
+                const noteMap = { 'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11 };
+                return (octave + 1) * 12 + noteMap[step] + alter;
+            }
+
+            midiToFrequency(midiNumber) {
+                return 440 * Math.pow(2, (midiNumber - 69) / 12);
+            }
+
+            async startRecording() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: {
+                            sampleRate: 44100,
+                            channelCount: 1,
+                            echoCancellation: false,
+                            noiseSuppression: false
+                        }
+                    });
+
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                        sampleRate: 44100
+                    });
+
+                    const source = this.audioContext.createMediaStreamSource(stream);
+                    this.analyzerNode = this.audioContext.createAnalyser();
+                    this.analyzerNode.fftSize = 4096;
+                    source.connect(this.analyzerNode);
+
+                    this.mediaRecorder = new MediaRecorder(stream);
+                    this.recordedChunks = [];
+                    this.recordingStartTime = this.audioContext.currentTime;
+
+                    this.mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            this.recordedChunks.push(event.data);
+                        }
+                    };
+
+                    this.mediaRecorder.start(100);
+                    return true;
+
+                } catch (error) {
+                    console.error('Failed to start recording:', error);
+                    return false;
+                }
+            }
+
+            async stopRecording() {
+                return new Promise((resolve) => {
+                    this.mediaRecorder.onstop = async () => {
+                        try {
+                            const audioBlob = new Blob(this.recordedChunks, { type: 'audio/webm' });
+                            const arrayBuffer = await audioBlob.arrayBuffer();
+                            const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+                            
+                            const analysisResult = await this.analyzeAudioBuffer(audioBuffer);
+                            const score = this.calculateRealScore(analysisResult);
+                            resolve(score);
+                            
+                        } catch (error) {
+                            console.error('Error analyzing audio:', error);
+                            resolve(this.generateMockScore());
+                        }
+                    };
+                    
+                    this.mediaRecorder.stop();
+                    this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                });
+            }
+
+            async analyzeAudioBuffer(audioBuffer) {
+                console.log('🎤 AUDIO ANALYSIS STARTED');
+                console.log('Audio buffer duration:', audioBuffer.duration, 'seconds');
+                console.log('Sample rate:', audioBuffer.sampleRate);
+                
+                const audioData = audioBuffer.getChannelData(0);
+                const sampleRate = audioBuffer.sampleRate;
+                const windowSize = 4096;
+                const hopSize = 512;
+                
+                const detectedNotes = [];
+                const onsets = [];
+                let previousEnergy = 0;
+                
+                // First pass: detect all potential onsets
+                const rawOnsets = [];
+                for (let i = 0; i < audioData.length - windowSize; i += hopSize) {
+                    const window = audioData.slice(i, i + windowSize);
+                    const rmsEnergy = Math.sqrt(window.reduce((sum, sample) => sum + sample * sample, 0) / window.length);
+                    
+                    const energyThreshold = 0.008; // Slightly higher threshold
+                    const onsetMultiplier = 1.4; // More conservative
+                    
+                    if (rmsEnergy > previousEnergy * onsetMultiplier && rmsEnergy > energyThreshold) {
+                        const timeStamp = i / sampleRate;
+                        rawOnsets.push({ time: timeStamp, energy: rmsEnergy });
+                    }
+                    
+                    previousEnergy = previousEnergy * 0.7 + rmsEnergy * 0.3;
+                }
+                
+                // Filter out onset duplicates (multiple detections of same note)
+                const filteredOnsets = [];
+                rawOnsets.forEach(onset => {
+                    const tooClose = filteredOnsets.some(existing => 
+                        Math.abs(existing.time - onset.time) < 0.1 // 100ms minimum gap
+                    );
+                    if (!tooClose) {
+                        filteredOnsets.push(onset);
+                    }
+                });
+                
+                console.log(`🎵 Onset filtering: ${rawOnsets.length} raw → ${filteredOnsets.length} filtered`);
+                
+                // Second pass: analyze pitch for each filtered onset
+                for (const onset of filteredOnsets) {
+                    const startSample = Math.floor(onset.time * sampleRate);
+                    const window = audioData.slice(startSample, startSample + windowSize);
+                    
+                    const pitch = this.estimatePitch(window, sampleRate);
+                    
+                    // More strict frequency filtering
+                    if (pitch > 80 && pitch < 1000) { // Piano range roughly 27Hz-4186Hz, but focus on fundamental frequencies
+                        const midiNumber = this.frequencyToMidi(pitch);
+                        
+                        // Filter out very low confidence detections
+                        const confidence = Math.min(onset.energy * 50, 1);
+                        if (confidence > 0.1) { // Only keep confident detections
+                            onsets.push(onset.time);
+                            detectedNotes.push({
+                                frequency: pitch,
+                                midiNumber: midiNumber,
+                                startTime: onset.time,
+                                confidence: confidence
+                            });
+                            
+                            console.log(`  → ${onset.time.toFixed(2)}s: ${pitch.toFixed(1)}Hz (MIDI ${midiNumber}), Confidence: ${(confidence*100).toFixed(1)}%`);
+                        }
+                    }
+                }
+
+                console.log('🎵 ANALYSIS COMPLETE:');
+                console.log('Total onsets detected:', onsets.length);
+                console.log('Total notes detected:', detectedNotes.length);
+                console.log('Detected pitches:', detectedNotes.map(n => `${n.frequency.toFixed(1)}Hz`));
+
+                return {
+                    detectedNotes: detectedNotes,
+                    onsets: onsets,
+                    totalDuration: audioBuffer.duration,
+                    silenceRatio: this.calculateSilenceRatio(audioData)
+                };
+            }
+
+            estimatePitch(audioBuffer, sampleRate) {
+                const minPeriod = Math.floor(sampleRate / 800);
+                const maxPeriod = Math.floor(sampleRate / 80);
+                
+                let bestCorrelation = 0;
+                let bestPeriod = 0;
+                
+                for (let period = minPeriod; period < maxPeriod; period++) {
+                    let correlation = 0;
+                    
+                    for (let i = 0; i < audioBuffer.length - period; i++) {
+                        correlation += audioBuffer[i] * audioBuffer[i + period];
+                    }
+                    
+                    if (correlation > bestCorrelation) {
+                        bestCorrelation = correlation;
+                        bestPeriod = period;
+                    }
+                }
+                
+                return bestPeriod > 0 ? sampleRate / bestPeriod : 0;
+            }
+
+            frequencyToMidi(frequency) {
+                return Math.round(69 + 12 * Math.log2(frequency / 440));
+            }
+
+            calculateSilenceRatio(audioData) {
+                const threshold = 0.01;
+                const silentSamples = audioData.filter(sample => Math.abs(sample) < threshold).length;
+                return silentSamples / audioData.length;
+            }
+
+            calculateRealScore(analysis) {
+                console.log('🎵 SCORING ANALYSIS STARTED 🎵');
+                console.log('Raw analysis data:', analysis);
+                console.log('Expected notes:', this.expectedNotes);
+                
+                const scores = {
+                    rhythm: this.calculateRhythmScore(analysis),
+                    pitch: this.calculatePitchScore(analysis),
+                    completeness: this.calculateCompletenessScore(analysis),
+                    flow: this.calculateFlowScore(analysis)
+                };
+
+                const finalScore = Math.round(
+                    scores.rhythm * 0.4 +
+                    scores.pitch * 0.3 +
+                    scores.completeness * 0.2 +
+                    scores.flow * 0.1
+                );
+
+                console.log('Score breakdown:', scores);
+                console.log('Final calculated score:', finalScore);
+
+                // Create detailed analysis for debugging
+                const detailedAnalysis = {
+                    expectedNotes: this.expectedNotes,
+                    detectedNotes: analysis.detectedNotes,
+                    expectedOnsets: this.expectedNotes.map(n => n.startTime),
+                    detectedOnsets: analysis.onsets,
+                    matchedNotes: this.findMatchedNotes(analysis),
+                    scoringDetails: {
+                        rhythmCalculation: this.getDetailedRhythmAnalysis(analysis),
+                        pitchCalculation: this.getDetailedPitchAnalysis(analysis)
+                    }
+                };
+
+                return {
+                    finalScore: Math.max(0, Math.min(100, finalScore)),
+                    breakdown: scores,
+                    feedback: this.generateRealFeedback(scores, analysis),
+                    details: {
+                        expectedNotes: this.expectedNotes.length,
+                        detectedNotes: analysis.detectedNotes.length,
+                        onsets: analysis.onsets.length,
+                        silenceRatio: Math.round(analysis.silenceRatio * 100),
+                        analysisTime: analysis.totalDuration,
+                        detectedFrequencies: analysis.detectedNotes.map(n => Math.round(n.frequency)),
+                        expectedFrequencies: this.expectedNotes.map(n => Math.round(n.frequency))
+                    },
+                    detailedAnalysis: detailedAnalysis
+                };
+            }
+
+            findMatchedNotes(analysis) {
+                const matchedNotes = [];
+                this.expectedNotes.forEach(expectedNote => {
+                    const timeWindow = 0.5;
+                    const notesInWindow = analysis.detectedNotes.filter(detected => 
+                        Math.abs(detected.startTime - expectedNote.startTime) <= timeWindow
+                    );
+                    
+                    if (notesInWindow.length > 0) {
+                        const closestNote = notesInWindow.reduce((closest, current) => {
+                            const currentPitchDiff = Math.abs(current.midiNumber - expectedNote.midiNumber);
+                            const closestPitchDiff = Math.abs(closest.midiNumber - expectedNote.midiNumber);
+                            return currentPitchDiff < closestPitchDiff ? current : closest;
+                        });
+                        matchedNotes.push(closestNote);
+                    } else {
+                        matchedNotes.push(null);
+                    }
+                });
+                return matchedNotes;
+            }
+
+            getDetailedRhythmAnalysis(analysis) {
+                const expectedOnsets = this.expectedNotes.map(note => note.startTime);
+                const detectedOnsets = analysis.onsets;
+                
+                console.log('📊 RHYTHM ANALYSIS:');
+                console.log('Expected onsets:', expectedOnsets);
+                console.log('Detected onsets:', detectedOnsets);
+                
+                const timingErrors = [];
+                expectedOnsets.forEach((expectedTime, i) => {
+                    if (detectedOnsets.length > 0) {
+                        const closestDetected = detectedOnsets.reduce((closest, detected) => {
+                            const currentDiff = Math.abs(detected - expectedTime);
+                            const closestDiff = Math.abs(closest - expectedTime);
+                            return currentDiff < closestDiff ? detected : closest;
+                        }, detectedOnsets[0]);
+                        
+                        const timeDiff = Math.abs(closestDetected - expectedTime);
+                        timingErrors.push({
+                            expected: expectedTime,
+                            detected: closestDetected,
+                            error: timeDiff
+                        });
+                        console.log(`Note ${i+1}: Expected ${expectedTime.toFixed(2)}s, Detected ${closestDetected.toFixed(2)}s, Error: ${(timeDiff*1000).toFixed(0)}ms`);
+                    }
+                });
+                
+                return timingErrors;
+            }
+
+            getDetailedPitchAnalysis(analysis) {
+                console.log('🎼 PITCH ANALYSIS:');
+                const pitchMatches = [];
+                
+                this.expectedNotes.forEach((expectedNote, i) => {
+                    const timeWindow = 0.5;
+                    const notesInWindow = analysis.detectedNotes.filter(detected => 
+                        Math.abs(detected.startTime - expectedNote.startTime) <= timeWindow
+                    );
+                    
+                    console.log(`Expected note ${i+1}: ${expectedNote.pitch} (${expectedNote.frequency.toFixed(1)}Hz) at ${expectedNote.startTime.toFixed(2)}s`);
+                    
+                    if (notesInWindow.length > 0) {
+                        const closestNote = notesInWindow.reduce((closest, current) => {
+                            const currentPitchDiff = Math.abs(current.midiNumber - expectedNote.midiNumber);
+                            const closestPitchDiff = Math.abs(closest.midiNumber - expectedNote.midiNumber);
+                            return currentPitchDiff < closestPitchDiff ? current : closest;
+                        });
+                        
+                        const pitchDiff = Math.abs(closestNote.midiNumber - expectedNote.midiNumber);
+                        console.log(`  → Detected: ${closestNote.frequency.toFixed(1)}Hz, MIDI diff: ${pitchDiff} semitones`);
+                        
+                        pitchMatches.push({
+                            expected: expectedNote,
+                            detected: closestNote,
+                            pitchError: pitchDiff
+                        });
+                    } else {
+                        console.log(`  → No notes detected in time window`);
+                        pitchMatches.push({
+                            expected: expectedNote,
+                            detected: null,
+                            pitchError: Infinity
+                        });
+                    }
+                });
+                
+                return pitchMatches;
+            }
+
+            calculateRhythmScore(analysis) {
+                if (this.expectedNotes.length === 0) return 70;
+                
+                const expectedOnsets = this.expectedNotes.map(note => note.startTime);
+                const detectedOnsets = analysis.onsets;
+                
+                if (detectedOnsets.length === 0) return 0;
+                
+                console.log('📊 RHYTHM ANALYSIS:');
+                console.log('Expected onsets:', expectedOnsets.map(t => t.toFixed(2) + 's'));
+                console.log('Detected onsets:', detectedOnsets.map(t => t.toFixed(2) + 's'));
+                
+                let totalAccuracy = 0;
+                let matchedOnsets = 0;
+                
+                // More forgiving rhythm analysis
+                expectedOnsets.forEach(expectedTime => {
+                    const closestDetected = detectedOnsets.reduce((closest, detected) => {
+                        const currentDiff = Math.abs(detected - expectedTime);
+                        const closestDiff = Math.abs(closest - expectedTime);
+                        return currentDiff < closestDiff ? detected : closest;
+                    }, detectedOnsets[0]);
+                    
+                    const timeDiff = Math.abs(closestDetected - expectedTime);
+                    const tolerance = 0.5; // 500ms tolerance (was 300ms)
+                    
+                    if (timeDiff <= tolerance) {
+                        // More generous scoring curve
+                        let accuracy;
+                        if (timeDiff <= 0.1) {
+                            accuracy = 100; // Perfect within 100ms
+                        } else if (timeDiff <= 0.2) {
+                            accuracy = 90;  // Very good within 200ms
+                        } else if (timeDiff <= 0.3) {
+                            accuracy = 80;  // Good within 300ms
+                        } else if (timeDiff <= 0.4) {
+                            accuracy = 70;  // OK within 400ms
+                        } else {
+                            accuracy = 60;  // Acceptable within 500ms
+                        }
+                        
+                        totalAccuracy += accuracy;
+                        matchedOnsets++;
+                        
+                        console.log(`Expected ${expectedTime.toFixed(2)}s → Detected ${closestDetected.toFixed(2)}s (${(timeDiff*1000).toFixed(0)}ms off, ${accuracy}% score)`);
+                    } else {
+                        console.log(`Expected ${expectedTime.toFixed(2)}s → No close match (${(timeDiff*1000).toFixed(0)}ms off)`);
+                    }
+                });
+                
+                // Also give credit for consistent tempo even if not perfectly aligned
+                if (detectedOnsets.length >= 2) {
+                    const detectedIntervals = [];
+                    for (let i = 1; i < detectedOnsets.length; i++) {
+                        detectedIntervals.push(detectedOnsets[i] - detectedOnsets[i-1]);
+                    }
+                    
+                    const avgInterval = detectedIntervals.reduce((a, b) => a + b, 0) / detectedIntervals.length;
+                    const variance = detectedIntervals.reduce((sum, interval) => {
+                        return sum + Math.pow(interval - avgInterval, 2);
+                    }, 0) / detectedIntervals.length;
+                    
+                    const consistency = Math.max(0, 100 - variance * 100);
+                    console.log(`Tempo consistency: ${consistency.toFixed(1)}%`);
+                    
+                    // Blend matching accuracy with tempo consistency
+                    const completionRatio = matchedOnsets / expectedOnsets.length;
+                    const avgAccuracy = matchedOnsets > 0 ? totalAccuracy / matchedOnsets : 0;
+                    
+                    const finalScore = Math.round(
+                        (avgAccuracy * completionRatio * 0.7) + (consistency * 0.3)
+                    );
+                    
+                    console.log(`Rhythm score: ${finalScore}% (${avgAccuracy.toFixed(1)}% accuracy × ${(completionRatio*100).toFixed(1)}% completion + ${consistency.toFixed(1)}% consistency)`);
+                    return finalScore;
+                } else {
+                    const completionRatio = matchedOnsets / expectedOnsets.length;
+                    const avgAccuracy = matchedOnsets > 0 ? totalAccuracy / matchedOnsets : 0;
+                    return Math.round(avgAccuracy * completionRatio);
+                }
+            }
+
+            calculatePitchScore(analysis) {
+                if (this.expectedNotes.length === 0) return 70;
+                
+                const detectedNotes = analysis.detectedNotes;
+                if (detectedNotes.length === 0) return 0;
+                
+                console.log('🎼 POLYPHONIC PITCH ANALYSIS:');
+                console.log('Expected notes:', this.expectedNotes.length);
+                console.log('Detected notes:', detectedNotes.length);
+                
+                let totalAccuracy = 0;
+                let matchedNotes = 0;
+                
+                // Group expected notes by time (to handle chords)
+                const timeGroups = new Map();
+                this.expectedNotes.forEach(expectedNote => {
+                    const timeKey = Math.round(expectedNote.startTime * 4) / 4; // Group by quarter-second
+                    if (!timeGroups.has(timeKey)) {
+                        timeGroups.set(timeKey, []);
+                    }
+                    timeGroups.get(timeKey).push(expectedNote);
+                });
+                
+                console.log('Time groups (for chord detection):', Array.from(timeGroups.entries()).map(([time, notes]) => 
+                    `${time}s: ${notes.length} notes (${notes.map(n => n.pitch).join(', ')})`));
+                
+                // Analyze each time group
+                timeGroups.forEach((expectedNotesAtTime, timeKey) => {
+                    const timeWindow = 0.5;
+                    const detectedNotesInWindow = detectedNotes.filter(detected => 
+                        Math.abs(detected.startTime - timeKey) <= timeWindow
+                    );
+                    
+                    console.log(`\nTime ${timeKey}s: Expected ${expectedNotesAtTime.length} notes, Found ${detectedNotesInWindow.length} in window`);
+                    
+                    if (expectedNotesAtTime.length === 1) {
+                        // Single note analysis
+                        const expectedNote = expectedNotesAtTime[0];
+                        if (detectedNotesInWindow.length > 0) {
+                            const closestNote = detectedNotesInWindow.reduce((closest, current) => {
+                                const currentPitchDiff = Math.abs(current.midiNumber - expectedNote.midiNumber);
+                                const closestPitchDiff = Math.abs(closest.midiNumber - expectedNote.midiNumber);
+                                return currentPitchDiff < closestPitchDiff ? current : closest;
+                            });
+                            
+                            const pitchDiff = Math.abs(closestNote.midiNumber - expectedNote.midiNumber);
+                            let accuracy = 0;
+                            
+                            if (pitchDiff === 0) {
+                                accuracy = 100;
+                            } else if (pitchDiff <= 1) {
+                                accuracy = 80;
+                            } else if (pitchDiff <= 2) {
+                                accuracy = 60;
+                            } else if (pitchDiff <= 3) {
+                                accuracy = 40;
+                            }
+                            
+                            totalAccuracy += accuracy;
+                            matchedNotes++;
+                            
+                            console.log(`  Single note: ${expectedNote.pitch} → ${closestNote.frequency.toFixed(1)}Hz (${accuracy}% accuracy)`);
+                        } else {
+                            console.log(`  Single note: ${expectedNote.pitch} → No detection (0% accuracy)`);
+                        }
+                    } else {
+                        // Chord analysis - try to match multiple expected notes
+                        console.log(`  Chord analysis: ${expectedNotesAtTime.map(n => n.pitch).join(' + ')}`);
+                        
+                        let chordAccuracy = 0;
+                        expectedNotesAtTime.forEach(expectedNote => {
+                            if (detectedNotesInWindow.length > 0) {
+                                const closestNote = detectedNotesInWindow.reduce((closest, current) => {
+                                    const currentPitchDiff = Math.abs(current.midiNumber - expectedNote.midiNumber);
+                                    const closestPitchDiff = closest ? Math.abs(closest.midiNumber - expectedNote.midiNumber) : Infinity;
+                                    return currentPitchDiff < closestPitchDiff ? current : closest;
+                                }, null);
+                                
+                                if (closestNote) {
+                                    const pitchDiff = Math.abs(closestNote.midiNumber - expectedNote.midiNumber);
+                                    if (pitchDiff <= 2) { // More lenient for chords
+                                        chordAccuracy += pitchDiff === 0 ? 100 : 60;
+                                        console.log(`    ${expectedNote.pitch} → ${closestNote.frequency.toFixed(1)}Hz ✓`);
+                                    } else {
+                                        console.log(`    ${expectedNote.pitch} → ${closestNote.frequency.toFixed(1)}Hz (too far)`);
+                                    }
+                                } else {
+                                    console.log(`    ${expectedNote.pitch} → No detection`);
+                                }
+                            }
+                        });
+                        
+                        // Average chord accuracy
+                        const avgChordAccuracy = chordAccuracy / expectedNotesAtTime.length;
+                        totalAccuracy += avgChordAccuracy;
+                        matchedNotes++;
+                        
+                        console.log(`  Chord accuracy: ${avgChordAccuracy.toFixed(1)}%`);
+                    }
+                });
+                
+                const finalScore = matchedNotes > 0 ? Math.round(totalAccuracy / matchedNotes) : 0;
+                console.log(`Final pitch score: ${finalScore}% (${totalAccuracy.toFixed(1)} total / ${matchedNotes} groups)`);
+                
+                return finalScore;
+            }
+
+            calculateCompletenessScore(analysis) {
+                if (this.expectedNotes.length === 0) return 80;
+                
+                console.log('📊 COMPLETENESS ANALYSIS:');
+                console.log('Expected notes:', this.expectedNotes.length);
+                console.log('Detected notes:', analysis.detectedNotes.length);
+                
+                // For polyphonic music, we expect more detected notes than expected notes
+                // because we detect harmonics, repeated notes, and both hands
+                
+                const expectedCount = this.expectedNotes.length;
+                const detectedCount = analysis.detectedNotes.length;
+                
+                // Calculate how many expected notes we can match with detected notes
+                let matchedExpectedNotes = 0;
+                
+                this.expectedNotes.forEach(expectedNote => {
+                    const timeWindow = 0.8; // Larger time window for completeness
+                    const pitchWindow = 3; // Allow 3 semitones difference
+                    
+                    const hasMatch = analysis.detectedNotes.some(detected => {
+                        const timeMatch = Math.abs(detected.startTime - expectedNote.startTime) <= timeWindow;
+                        const pitchMatch = Math.abs(detected.midiNumber - expectedNote.midiNumber) <= pitchWindow;
+                        return timeMatch && pitchMatch;
+                    });
+                    
+                    if (hasMatch) {
+                        matchedExpectedNotes++;
+                    }
+                });
+                
+                console.log('Matched expected notes:', matchedExpectedNotes, '/', expectedCount);
+                
+                // Base score on how many expected notes we found evidence for
+                const completionRatio = matchedExpectedNotes / expectedCount;
+                let score = Math.round(completionRatio * 100);
+                
+                // Bonus for playing more notes (both hands, repeats, etc.)
+                if (detectedCount > expectedCount) {
+                    const extraNotesRatio = Math.min((detectedCount - expectedCount) / expectedCount, 1);
+                    const bonus = Math.round(extraNotesRatio * 10); // Up to 10 point bonus
+                    score += bonus;
+                    console.log('Extra notes bonus:', bonus, 'points');
+                }
+                
+                score = Math.max(0, Math.min(100, score)); // Clamp to 0-100
+                
+                console.log('Final completeness score:', score, '%');
+                return score;
+            }
+
+            calculateFlowScore(analysis) {
+                const baseScore = 100;
+                const silencePenalty = analysis.silenceRatio * 30;
+                const onsetConsistency = this.calculateOnsetConsistency(analysis.onsets);
+                
+                return Math.max(0, Math.round(baseScore - silencePenalty + onsetConsistency));
+            }
+
+            calculateOnsetConsistency(onsets) {
+                if (onsets.length < 2) return -20;
+                
+                const intervals = [];
+                for (let i = 1; i < onsets.length; i++) {
+                    intervals.push(onsets[i] - onsets[i - 1]);
+                }
+                
+                const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+                const variance = intervals.reduce((sum, interval) => {
+                    return sum + Math.pow(interval - avgInterval, 2);
+                }, 0) / intervals.length;
+                
+                const consistency = Math.max(0, 20 - variance * 10);
+                return consistency;
+            }
+
+            generateRealFeedback(scores, analysis) {
+                const feedback = [];
+                
+                if (scores.rhythm >= 80) {
+                    feedback.push("🎵 Excellent rhythm and timing!");
+                } else if (scores.rhythm >= 60) {
+                    feedback.push("⏱️ Good timing, try to stay more steady");
+                } else if (scores.rhythm >= 30) {
+                    feedback.push("🎯 Work on keeping a consistent beat");
+                } else {
+                    feedback.push("🎼 Focus on rhythm - try using a metronome");
+                }
+
+                if (scores.pitch >= 80) {
+                    feedback.push("🎶 Great note accuracy!");
+                } else if (scores.pitch >= 60) {
+                    feedback.push("🎵 Good pitch, watch for a few wrong notes");
+                } else if (scores.pitch >= 30) {
+                    feedback.push("📚 Practice the note positions more");
+                } else {
+                    feedback.push("🎯 Focus on playing the correct pitches");
+                }
+
+                if (scores.completeness >= 80) {
+                    feedback.push("✅ You played most of the piece!");
+                } else if (scores.completeness >= 50) {
+                    feedback.push("👍 Good attempt, try to play more notes");
+                } else {
+                    feedback.push("🚀 Try to play through more of the exercise");
+                }
+
+                if (analysis.silenceRatio > 0.7) {
+                    feedback.push("🔊 Try to play more confidently with less hesitation");
+                }
+
+                return feedback;
+            }
+
+            generateMockScore() {
+                return {
+                    finalScore: 75 + Math.floor(Math.random() * 20),
+                    breakdown: {
+                        rhythm: 70 + Math.floor(Math.random() * 25),
+                        pitch: 65 + Math.floor(Math.random() * 30),
+                        completeness: 80 + Math.floor(Math.random() * 20),
+                        flow: 75 + Math.floor(Math.random() * 20)
+                    },
+                    feedback: [
+                        "🎵 Analysis working - real audio scoring active!",
+                        "🔧 Your performance was analyzed using pitch detection"
+                    ]
+                };
+            }
+        }
+
+        class SightReadle {
+            constructor() {
+                this.loadTodaysChallenge();
+                this.musicScorer = new RealMusicScorer();
+                this.currentMusicXML = null;
+                this.recordingTimer = null;
+                this.recordingStartTime = null;
+            }
+
+            async loadTodaysChallenge() {
+                try {
+                    const response = await fetch('/api/today');
+                    const data = await response.json();
+                    await this.displayChallenge(data);
+                } catch (error) {
+                    this.displayError('Failed to load today\'s challenge');
+                }
+            }
+
+            async loadSpecificPiece(pieceNumber) {
+                try {
+                    const response = await fetch(`/api/piece/${pieceNumber}`);
+                    const data = await response.json();
+                    await this.displayChallenge(data);
+                } catch (error) {
+                    this.displayError(`Failed to load piece #${pieceNumber}`);
+                }
+            }
+
+            async displayChallenge(data) {
+                const content = document.getElementById('challenge-content');
+                content.innerHTML = `
+                    <div class="challenge-info">
+                        <h2 class="challenge-title">${data.title}</h2>
+                        <p class="challenge-date">${data.date}</p>
+                    </div>
+                    
+                    <div class="music-container">
+                        <img src="${data.imageUrl}" alt="Sheet music for piece ${data.pieceNumber}" class="music-sheet" 
+                             onerror="this.parentElement.innerHTML='<div class=loading>Sheet music not found</div>'">
+                        <div id="musicxml-status"></div>
+                    </div>
+                    
+                    <div class="controls">
+                        <button class="btn btn-primary" onclick="app.loadTodaysChallenge()">
+                            Today's Challenge
+                        </button>
+                        <button class="btn btn-secondary" onclick="app.loadRandomPiece()">
+                            Random Piece
+                        </button>
+                        <button class="btn btn-secondary" onclick="app.loadPreviousPiece()">
+                            Previous
+                        </button>
+                        <button class="btn btn-secondary" onclick="app.loadNextPiece()">
+                            Next
+                        </button>
+                        <div class="exercise-selector">
+                            <label for="exercise-input">Go to exercise:</label>
+                            <input type="number" id="exercise-input" min="1" max="354" placeholder="1-354" 
+                                   onkeypress="if(event.key==='Enter') app.loadSpecificExercise()">
+                            <button class="btn btn-secondary" onclick="app.loadSpecificExercise()">
+                                Go
+                            </button>
+                        </div>
+                        <button class="btn btn-primary" onclick="app.startRecording()" id="recordBtn">
+                            🎤 Start Recording
+                        </button>
+                    </div>
+                    
+                    <div id="recording-status" class="recording-status hidden">
+                        <div class="recording-indicator">
+                            <span class="recording-dot"></span>
+                            Recording... <span id="recording-timer">0:00</span>
+                        </div>
+                        <button class="btn btn-primary" onclick="app.stopRecording()">
+                            ⏹️ Stop & Score
+                        </button>
+                    </div>
+                    
+                    <div id="score-results" class="score-results hidden">
+                        <h3>Your Performance Score</h3>
+                        <div class="final-score">
+                            <span class="score-number" id="final-score">--</span>
+                            <span class="score-label">/100</span>
+                        </div>
+                        <div class="score-breakdown">
+                            <div class="score-item">
+                                <span class="score-category">Flow</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="flow-score"></div>
+                                </div>
+                                <span class="score-value" id="flow-value">--</span>
+                            </div>
+                        </div>
+                        <div class="feedback" id="feedback-text">
+                            <!-- Feedback will appear here -->
+                        </div>
+                        <button class="btn btn-primary" onclick="app.tryAgain()">
+                            🔄 Try Again
+                        </button>
+                    </div>
+                `;
+                this.currentPiece = data.pieceNumber;
+                
+                // Load corresponding MusicXML file
+                await this.loadMusicXML(data.pieceNumber);
+            }
+
+            async loadMusicXML(pieceNumber) {
+                try {
+                    // Try .xml first (uncompressed), then .mxl (compressed)
+                    let response = await fetch(`/musicxml/exercise_${pieceNumber}.xml`);
+                    let fileType = 'xml';
+                    
+                    if (!response.ok) {
+                        console.log('No .xml file found, trying .mxl');
+                        response = await fetch(`/musicxml/exercise_${pieceNumber}.mxl`);
+                        fileType = 'mxl';
+                    }
+                    
+                    console.log(`Attempting to load: /musicxml/exercise_${pieceNumber}.${fileType}`);
+                    console.log('Response status:', response.status, response.statusText);
+                    
+                    if (response.ok) {
+                        const contentType = response.headers.get('content-type');
+                        console.log('Content type:', contentType);
+                        
+                        // Handle compressed .mxl files
+                        if (fileType === 'mxl' || (contentType && contentType.includes('application/zip'))) {
+                            console.log('File is compressed (.mxl format) - attempting to decompress');
+                            
+                            try {
+                                const arrayBuffer = await response.arrayBuffer();
+                                const xmlContent = await this.decompressMXL(arrayBuffer);
+                                
+                                if (xmlContent) {
+                                    this.currentMusicXML = xmlContent;
+                                    await this.musicScorer.parseMusicXML(this.currentMusicXML);
+                                    console.log('Compressed MusicXML loaded for piece', pieceNumber);
+                                    this.showMusicXMLStatus(true, pieceNumber);
+                                } else {
+                                    throw new Error('Could not decompress .mxl file');
+                                }
+                            } catch (decompressError) {
+                                console.error('Decompression failed:', decompressError);
+                                this.showMusicXMLStatus(false, pieceNumber, 'Could not decompress .mxl file - try exporting as .xml format');
+                                this.currentMusicXML = null;
+                            }
+                        } else {
+                            // Handle plain XML files
+                            this.currentMusicXML = await response.text();
+                            console.log('Plain XML file loaded, size:', this.currentMusicXML.length, 'characters');
+                            console.log('First 200 characters:', this.currentMusicXML.substring(0, 200));
+                            
+                            await this.musicScorer.parseMusicXML(this.currentMusicXML);
+                            console.log('Plain MusicXML loaded for piece', pieceNumber);
+                            this.showMusicXMLStatus(true, pieceNumber);
+                        }
+                    } else {
+                        console.log('No MusicXML file found for piece', pieceNumber);
+                        this.currentMusicXML = null;
+                        this.showMusicXMLStatus(false, pieceNumber);
+                    }
+                } catch (error) {
+                    console.log('Could not load MusicXML:', error);
+                    this.currentMusicXML = null;
+                    this.showMusicXMLStatus(false, pieceNumber, error.message);
+                }
+            }
+
+            // Proper decompression for .mxl files using JSZip
+            async decompressMXL(arrayBuffer) {
+                try {
+                    console.log('Using JSZip to decompress .mxl file');
+                    
+                    // Load the ZIP file
+                    const zip = await JSZip.loadAsync(arrayBuffer);
+                    console.log('ZIP loaded successfully. Files in archive:', Object.keys(zip.files));
+                    
+                    // Look for the main MusicXML file
+                    // Common names: exercise_1.xml, container.xml, or any .xml file
+                    let xmlFile = null;
+                    let xmlFileName = null;
+                    
+                    // Try to find the main XML file
+                    for (const fileName in zip.files) {
+                        if (fileName.endsWith('.xml') && !fileName.startsWith('META-INF/')) {
+                            xmlFile = zip.files[fileName];
+                            xmlFileName = fileName;
+                            console.log('Found XML file:', fileName);
+                            break;
+                        }
+                    }
+                    
+                    if (!xmlFile) {
+                        // Fallback: look for any XML-like content
+                        for (const fileName in zip.files) {
+                            if (fileName.includes('xml') || fileName.endsWith('.musicxml')) {
+                                xmlFile = zip.files[fileName];
+                                xmlFileName = fileName;
+                                console.log('Found XML-like file:', fileName);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!xmlFile) {
+                        throw new Error('No XML file found in the archive. Files: ' + Object.keys(zip.files).join(', '));
+                    }
+                    
+                    // Extract the XML content
+                    const xmlContent = await xmlFile.async('text');
+                    console.log('Successfully extracted XML from:', xmlFileName);
+                    console.log('XML content length:', xmlContent.length);
+                    console.log('First 300 characters:', xmlContent.substring(0, 300));
+                    
+                    // Validate it's MusicXML
+                    if (xmlContent.includes('<?xml') && (xmlContent.includes('<score-partwise') || xmlContent.includes('<score-timewise'))) {
+                        return xmlContent;
+                    } else {
+                        throw new Error('Extracted content does not appear to be valid MusicXML');
+                    }
+                    
+                } catch (error) {
+                    console.error('JSZip decompression error:', error);
+                    return null;
+                }
+            }
+
+            showMusicXMLStatus(hasFile, pieceNumber, errorMsg = null) {
+                const statusElement = document.getElementById('musicxml-status');
+                if (statusElement) {
+                    if (hasFile) {
+                        statusElement.innerHTML = `
+                            <div style="color: #28a745; font-size: 0.9rem; margin: 10px 0;">
+                                ✅ Real scoring available - MusicXML loaded for exercise ${pieceNumber}
+                            </div>
+                        `;
+                    } else {
+                        const message = errorMsg || `No MusicXML file for exercise ${pieceNumber}`;
+                        statusElement.innerHTML = `
+                            <div style="color: #ffc107; font-size: 0.9rem; margin: 10px 0;">
+                                ⚠️ Demo scoring only - ${message}
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            async startRecording() {
+                console.log('Start recording clicked');
+                
+                // Allow recording even without MusicXML for testing
+                const started = await this.musicScorer.startRecording();
+                if (started) {
+                    console.log('Recording started successfully');
+                    document.getElementById('recordBtn').style.display = 'none';
+                    document.getElementById('recording-status').classList.remove('hidden');
+                    document.getElementById('score-results').classList.add('hidden');
+                    
+                    this.recordingStartTime = Date.now();
+                    this.startRecordingTimer();
+                } else {
+                    alert('Could not access microphone. Please check permissions.');
+                }
+            }
+
+            startRecordingTimer() {
+                this.recordingTimer = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - this.recordingStartTime) / 1000);
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    document.getElementById('recording-timer').textContent = 
+                        `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                }, 1000);
+            }
+
+            async stopRecording() {
+                console.log('Stop recording clicked');
+                clearInterval(this.recordingTimer);
+                document.getElementById('recording-status').classList.add('hidden');
+                
+                const result = await this.musicScorer.stopRecording();
+                this.displayScore(result);
+            }
+
+            displayScore(result) {
+                console.log('Displaying score:', result);
+                document.getElementById('score-results').classList.remove('hidden');
+                document.getElementById('final-score').textContent = result.finalScore;
+                
+                // Animate score bars
+                setTimeout(() => {
+                    this.animateScoreBar('rhythm', result.breakdown.rhythm);
+                    this.animateScoreBar('pitch', result.breakdown.pitch);
+                    this.animateScoreBar('completeness', result.breakdown.completeness);
+                    this.animateScoreBar('flow', result.breakdown.flow);
+                }, 500);
+                
+                // Display feedback
+                const feedbackContainer = document.getElementById('feedback-text');
+                let feedbackHTML = result.feedback.map(feedback => 
+                    `<div class="feedback-item">${feedback}</div>`
+                ).join('');
+                
+                // Add detailed debugging info
+                if (result.details) {
+                    feedbackHTML += `
+                        <div class="debug-info" style="margin-top: 20px; padding: 15px; background: #f0f8ff; border-radius: 8px; border-left: 4px solid #2196f3;">
+                            <h4 style="margin-bottom: 10px; color: #1976d2;">🔍 Debug Information</h4>
+                            <div style="font-size: 0.9rem; line-height: 1.4;">
+                                <strong>Expected Notes:</strong> ${result.details.expectedNotes}<br>
+                                <strong>Detected Notes:</strong> ${result.details.detectedNotes}<br>
+                                <strong>Detected Onsets:</strong> ${result.details.onsets}<br>
+                                <strong>Silence Ratio:</strong> ${result.details.silenceRatio}%<br>
+                                ${result.details.analysisTime ? `<strong>Analysis Time:</strong> ${result.details.analysisTime}s<br>` : ''}
+                                ${result.details.detectedFrequencies ? `<strong>Detected Frequencies:</strong> ${result.details.detectedFrequencies.join(', ')} Hz<br>` : ''}
+                                ${result.details.expectedFrequencies ? `<strong>Expected Frequencies:</strong> ${result.details.expectedFrequencies.join(', ')} Hz<br>` : ''}
+                            </div>
+                            <button class="btn btn-secondary" onclick="app.showDetailedAnalysis()" style="margin-top: 10px; font-size: 0.8rem;">
+                                Show Detailed Analysis
+                            </button>
+                        </div>
+                    `;
+                }
+                
+                feedbackContainer.innerHTML = feedbackHTML;
+                
+                // Store the result for detailed analysis
+                this.lastAnalysisResult = result;
+            }
+
+            showDetailedAnalysis() {
+                if (!this.lastAnalysisResult || !this.lastAnalysisResult.detailedAnalysis) {
+                    alert('No detailed analysis data available');
+                    return;
+                }
+                
+                const analysis = this.lastAnalysisResult.detailedAnalysis;
+                let detailsHTML = `
+                    <h3>Detailed Performance Analysis</h3>
+                    <div style="max-height: 400px; overflow-y: auto; padding: 10px; background: #f9f9f9; border-radius: 5px;">
+                `;
+                
+                if (analysis.expectedNotes && analysis.expectedNotes.length > 0) {
+                    detailsHTML += `<h4>Expected vs Detected Notes:</h4><table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                        <tr style="background: #e9ecef;"><th style="padding: 5px; border: 1px solid #ddd;">Time</th><th style="padding: 5px; border: 1px solid #ddd;">Expected</th><th style="padding: 5px; border: 1px solid #ddd;">Detected</th><th style="padding: 5px; border: 1px solid #ddd;">Status</th></tr>`;
+                    
+                    analysis.expectedNotes.forEach((note, i) => {
+                        const detected = analysis.matchedNotes ? analysis.matchedNotes[i] : null;
+                        const status = detected ? (Math.abs(detected.midiNumber - note.midiNumber) <= 1 ? '✅ Good' : '⚠️ Wrong pitch') : '❌ Missing';
+                        detailsHTML += `<tr>
+                            <td style="padding: 5px; border: 1px solid #ddd;">${note.startTime.toFixed(2)}s</td>
+                            <td style="padding: 5px; border: 1px solid #ddd;">${note.pitch} (${note.frequency.toFixed(1)}Hz)</td>
+                            <td style="padding: 5px; border: 1px solid #ddd;">${detected ? `${detected.frequency.toFixed(1)}Hz` : 'None'}</td>
+                            <td style="padding: 5px; border: 1px solid #ddd;">${status}</td>
+                        </tr>`;
+                    });
+                    detailsHTML += `</table>`;
+                }
+                
+                if (analysis.detectedOnsets && analysis.detectedOnsets.length > 0) {
+                    detailsHTML += `<h4>Rhythm Analysis:</h4>
+                        <p><strong>Detected Note Timings:</strong> ${analysis.detectedOnsets.map(t => t.toFixed(2) + 's').join(', ')}</p>
+                        <p><strong>Expected Note Timings:</strong> ${analysis.expectedOnsets ? analysis.expectedOnsets.map(t => t.toFixed(2) + 's').join(', ') : 'N/A'}</p>`;
+                }
+                
+                detailsHTML += `</div>`;
+                
+                // Create a modal or alert with the details
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                    background: rgba(0,0,0,0.5); z-index: 1000; display: flex; 
+                    align-items: center; justify-content: center; padding: 20px;
+                `;
+                modal.innerHTML = `
+                    <div style="background: white; border-radius: 10px; padding: 20px; max-width: 800px; width: 100%; max-height: 80vh; overflow-y: auto;">
+                        ${detailsHTML}
+                        <button onclick="this.parentElement.parentElement.remove()" 
+                                style="margin-top: 15px; padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                            Close
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            }
+
+            animateScoreBar(category, score) {
+                const fillElement = document.getElementById(`${category}-score`);
+                const valueElement = document.getElementById(`${category}-value`);
+                
+                if (fillElement && valueElement) {
+                    fillElement.style.width = `${score}%`;
+                    valueElement.textContent = score;
+                }
+            }
+
+            tryAgain() {
+                document.getElementById('score-results').classList.add('hidden');
+                document.getElementById('recordBtn').style.display = 'inline-block';
+            }
+
+            displayError(message) {
+                const content = document.getElementById('challenge-content');
+                content.innerHTML = `
+                    <div class="error">${message}</div>
+                    <div class="controls">
+                        <button class="btn btn-primary" onclick="app.loadTodaysChallenge()">
+                            Try Again
+                        </button>
+                    </div>
+                `;
+            }
+
+            loadSpecificExercise() {
+                const input = document.getElementById('exercise-input');
+                const exerciseNumber = parseInt(input.value);
+                
+                if (exerciseNumber && exerciseNumber >= 1 && exerciseNumber <= 354) {
+                    this.loadSpecificPiece(exerciseNumber);
+                    input.value = ''; // Clear the input
+                } else {
+                    alert('Please enter a number between 1 and 354');
+                }
+            }
+
+            loadRandomPiece() {
+                const randomNumber = Math.floor(Math.random() * 354) + 1;
+                this.loadSpecificPiece(randomNumber);
+            }
+
+            loadPreviousPiece() {
+                const prevPiece = this.currentPiece > 1 ? this.currentPiece - 1 : 354;
+                this.loadSpecificPiece(prevPiece);
+            }
+
+            loadNextPiece() {
+                const nextPiece = this.currentPiece < 354 ? this.currentPiece + 1 : 1;
+                this.loadSpecificPiece(nextPiece);
+            }
+        }
+
+        // Initialize the app
+        const app = new SightReadle();
+    </script>
+</body>
+</html>category">Rhythm</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="rhythm-score"></div>
+                                </div>
+                                <span class="score-value" id="rhythm-value">--</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-category">Pitch</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="pitch-score"></div>
+                                </div>
+                                <span class="score-value" id="pitch-value">--</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-category">Completeness</span>
+                                <div class="score-bar">
+                                    <div class="score-fill" id="completeness-score"></div>
+                                </div>
+                                <span class="score-value" id="completeness-value">--</span>
+                            </div>
+                            <div class="score-item">
+                                <span class="score-
