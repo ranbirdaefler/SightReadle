@@ -1,29 +1,25 @@
 import fitz  # PyMuPDF
-from PIL import Image
+from PIL import Image, ImageDraw
 import os
 import re
 import numpy as np
+import cv2
+from scipy.signal import find_peaks
 
 def extract_exercises_from_pdf(pdf_path, output_dir="exercises"):
     """
-    Extract individual exercises from a PDF and save them as PNG files.
-    
-    Args:
-        pdf_path (str): Path to the input PDF file
-        output_dir (str): Directory to save the extracted exercise images
+    Extract individual exercises from a PDF with improved boundary detection
+    and padding to prevent bleeding for Audiveris conversion.
     """
     
-    # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
-    
-    # Open the PDF
     doc = fitz.open(pdf_path)
     
     for page_num in range(len(doc)):
         page = doc[page_num]
         
-        # Convert page to image
-        mat = fitz.Matrix(2.0, 2.0)  # Scale factor for better quality
+        # Convert page to high-resolution image for better OCR
+        mat = fitz.Matrix(3.0, 3.0)  # Higher resolution for better detection
         pix = page.get_pixmap(matrix=mat)
         img_data = pix.tobytes("png")
         
@@ -31,159 +27,282 @@ def extract_exercises_from_pdf(pdf_path, output_dir="exercises"):
         img = Image.open(fitz.io.BytesIO(img_data))
         img_array = np.array(img)
         
-        # Search for exercise numbers in the text
-        text_dict = page.get_text("dict")
-        exercise_positions = []
+        # Get exercise positions using text detection
+        exercise_positions = find_exercise_numbers(page, scale_factor=3.0)
         
-        # Find all "No. X" patterns and their positions
-        for block in text_dict["blocks"]:
-            if "lines" in block:
-                for line in block["lines"]:
-                    for span in line["spans"]:
-                        text = span["text"].strip()
-                        if re.match(r"No\.\s*\d+", text):
-                            # Get the bounding box of the text
-                            bbox = span["bbox"]
-                            exercise_num = re.search(r"\d+", text).group()
-                            exercise_positions.append({
-                                "number": int(exercise_num),
-                                "y_position": bbox[1],  # Top y-coordinate
-                                "bbox": bbox
-                            })
-        
-        # Sort exercises by their vertical position
-        exercise_positions.sort(key=lambda x: x["y_position"])
-        
-        # If we found exercises, crop and save them
         if exercise_positions:
-            page_height = img_array.shape[0]
+            # Find staff line regions for better boundary detection
+            staff_regions = detect_staff_regions(img_array)
             
-            for i, exercise in enumerate(exercise_positions):
-                # Determine crop boundaries
-                if i == 0:
-                    # First exercise: start from top of page
-                    top = 0
-                else:
-                    # Start from previous exercise's end
-                    top = crop_bottom
-                
-                if i == len(exercise_positions) - 1:
-                    # Last exercise: go to bottom of page
-                    bottom = page_height
-                else:
-                    # End at next exercise's start (with some padding)
-                    next_exercise_y = int(exercise_positions[i + 1]["y_position"] * 2)  # Scale factor
-                    bottom = max(next_exercise_y - 20, top + 100)  # Minimum height
-                
-                crop_bottom = bottom
-                
-                # Add padding around the exercise (more padding at top to avoid bleeding)
-                top_padding = 40  # Extra padding at top to avoid bleeding from previous exercise
-                bottom_padding = 20
-                top = max(0, top - top_padding)
-                bottom = min(page_height, bottom + bottom_padding)
-                
-                # Crop the exercise
-                cropped_exercise = img_array[top:bottom, :]
-                
-                # Convert back to PIL Image and save
-                exercise_img = Image.fromarray(cropped_exercise)
-                
-                # Generate filename - simple sequential numbering
-                filename = f"exercise_{exercise['number']}.png"
-                filepath = os.path.join(output_dir, filename)
-                
-                exercise_img.save(filepath)
-                print(f"Saved: {filename}")
-        
+            # Extract each exercise with smart boundaries
+            extract_individual_exercises(
+                img_array, exercise_positions, staff_regions, 
+                output_dir, page_num
+            )
         else:
-            # If no exercises found, save the whole page
-            filename = f"page_{page_num + 1}.png"
-            filepath = os.path.join(output_dir, filename)
-            img.save(filepath)
-            print(f"No exercises detected. Saved whole page: {filename}")
+            # Fallback: try visual detection
+            print(f"No exercise numbers found on page {page_num + 1}, trying visual detection...")
+            extract_exercises_visual(img_array, output_dir, page_num)
     
     doc.close()
     print(f"\nExtraction complete! Files saved to '{output_dir}' directory.")
 
-def extract_exercises_alternative(pdf_path, output_dir="exercises"):
-    """
-    Alternative method using visual detection of staff lines to separate exercises.
-    Use this if the text-based method doesn't work well.
-    """
+def find_exercise_numbers(page, scale_factor=3.0):
+    """Find exercise number positions with better accuracy."""
+    text_dict = page.get_text("dict")
+    exercise_positions = []
     
-    os.makedirs(output_dir, exist_ok=True)
-    doc = fitz.open(pdf_path)
+    for block in text_dict["blocks"]:
+        if "lines" in block:
+            for line in block["lines"]:
+                for span in line["spans"]:
+                    text = span["text"].strip()
+                    # More flexible pattern matching
+                    if re.match(r"(No\.|Number|Exercise)\s*\d+", text, re.IGNORECASE):
+                        bbox = span["bbox"]
+                        exercise_num = re.search(r"\d+", text)
+                        if exercise_num:
+                            exercise_positions.append({
+                                "number": int(exercise_num.group()),
+                                "y_position": bbox[1] * scale_factor,
+                                "bbox": [coord * scale_factor for coord in bbox],
+                                "text": text
+                            })
     
-    for page_num in range(len(doc)):
-        page = doc[page_num]
+    # Sort by vertical position and remove duplicates
+    exercise_positions.sort(key=lambda x: x["y_position"])
+    
+    # Remove duplicate exercise numbers (keep the first occurrence)
+    seen_numbers = set()
+    unique_exercises = []
+    for ex in exercise_positions:
+        if ex["number"] not in seen_numbers:
+            unique_exercises.append(ex)
+            seen_numbers.add(ex["number"])
+    
+    return unique_exercises
+
+def detect_staff_regions(img_array):
+    """Detect staff line regions to help with exercise boundary detection."""
+    # Convert to grayscale if needed
+    if len(img_array.shape) == 3:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_array
+    
+    # Create horizontal kernel to detect staff lines
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (40, 1))
+    
+    # Detect horizontal lines
+    horizontal_lines = cv2.morphologyEx(gray, cv2.MORPH_OPEN, horizontal_kernel)
+    
+    # Find row sums to identify staff regions
+    row_sums = np.sum(horizontal_lines, axis=1)
+    
+    # Smooth the signal
+    from scipy.ndimage import gaussian_filter1d
+    smoothed = gaussian_filter1d(row_sums, sigma=3)
+    
+    # Find peaks (staff line regions)
+    peaks, properties = find_peaks(
+        smoothed, 
+        height=np.max(smoothed) * 0.1,
+        distance=50,
+        width=10
+    )
+    
+    return peaks
+
+def extract_individual_exercises(img_array, exercise_positions, staff_regions, output_dir, page_num):
+    """Extract exercises with smart boundary detection and proper padding."""
+    page_height, page_width = img_array.shape[:2]
+    
+    for i, exercise in enumerate(exercise_positions):
+        # Determine boundaries more intelligently
+        exercise_y = int(exercise["y_position"])
         
-        # Convert to high-resolution image
-        mat = fitz.Matrix(3.0, 3.0)
-        pix = page.get_pixmap(matrix=mat)
-        img_data = pix.tobytes("png")
-        img = Image.open(fitz.io.BytesIO(img_data))
-        img_gray = img.convert('L')
-        img_array = np.array(img_gray)
+        # Find the closest staff region to this exercise
+        closest_staff_idx = find_closest_staff_region(exercise_y, staff_regions)
         
-        # Find horizontal lines (staff lines)
-        horizontal_kernel = np.ones((1, 50), np.uint8)
-        horizontal_lines = cv2.morphologyEx(255 - img_array, cv2.MORPH_OPEN, horizontal_kernel)
+        if i == 0:
+            # First exercise: start from top or first staff region
+            top = max(0, exercise_y - 150)  # Give generous top padding
+        else:
+            # Start after previous exercise with buffer
+            prev_bottom = exercise_bottom + 30
+            top = prev_bottom
         
-        # Find regions with multiple staff lines (indicating exercises)
-        row_sums = np.sum(horizontal_lines, axis=1)
-        
-        # Find peaks in row sums (areas with many horizontal lines)
-        from scipy.signal import find_peaks
-        peaks, _ = find_peaks(row_sums, height=np.max(row_sums) * 0.3, distance=100)
-        
-        # Group peaks into exercises
-        exercise_regions = []
-        current_start = 0
-        
-        for i, peak in enumerate(peaks):
-            if i > 0 and peak - peaks[i-1] > 200:  # Large gap indicates new exercise
-                exercise_regions.append((current_start, peaks[i-1] + 100))
-                current_start = peak - 100
-        
-        # Add the last region
-        if peaks.size > 0:
-            exercise_regions.append((current_start, len(img_array)))
-        
-        # Save each exercise region
-        for i, (start, end) in enumerate(exercise_regions):
-            cropped = img_array[start:end, :]
-            exercise_img = Image.fromarray(cropped)
+        if i == len(exercise_positions) - 1:
+            # Last exercise: go to bottom
+            bottom = page_height
+        else:
+            # Find next exercise position
+            next_exercise_y = int(exercise_positions[i + 1]["y_position"])
             
-            filename = f"exercise_{i+1}_page_{page_num + 1}_alt.png"
-            filepath = os.path.join(output_dir, filename)
-            exercise_img.save(filepath)
-            print(f"Saved: {filename}")
+            # Look for staff regions between current and next exercise
+            staff_between = [s for s in staff_regions if exercise_y < s < next_exercise_y]
+            
+            if staff_between:
+                # End after the last staff region in this exercise
+                last_staff = max(staff_between)
+                bottom = min(next_exercise_y - 80, last_staff + 100)
+            else:
+                # Fallback: split the difference
+                bottom = next_exercise_y - 80
+        
+        # Ensure minimum height
+        if bottom - top < 200:
+            bottom = top + 200
+        
+        exercise_bottom = bottom
+        
+        # Add generous padding to prevent bleeding
+        top_padding = 5 if i == 0 else -50
+        bottom_padding = 70
+        left_padding = 40
+        right_padding = 40
+        
+        # Apply padding with bounds checking
+        crop_top = max(0, top - top_padding)
+        crop_bottom = min(page_height, bottom + bottom_padding)
+        crop_left = max(0, left_padding)
+        crop_right = min(page_width, page_width - right_padding)
+        
+        # Crop the exercise
+        cropped_exercise = img_array[crop_top:crop_bottom, crop_left:crop_right]
+        
+        # Add white padding around the cropped exercise
+        padded_exercise = add_white_padding(cropped_exercise, 
+                                          top=20, bottom=20, 
+                                          left=30, right=30)
+        
+        # Clean up any artifacts (optional noise reduction)
+        cleaned_exercise = clean_exercise_image(padded_exercise)
+        
+        # Convert to PIL and save
+        exercise_img = Image.fromarray(cleaned_exercise)
+        
+        filename = f"exercise_{exercise['number']}.png"
+        filepath = os.path.join(output_dir, filename)
+        
+        exercise_img.save(filepath, "PNG", optimize=True)
+        print(f"Saved: {filename} (size: {exercise_img.size})")
+
+def find_closest_staff_region(exercise_y, staff_regions):
+    """Find the staff region closest to the exercise position."""
+    if len(staff_regions) == 0:
+        return None
     
-    doc.close()
+    distances = [abs(staff - exercise_y) for staff in staff_regions]
+    return np.argmin(distances)
+
+def add_white_padding(img_array, top=20, bottom=20, left=20, right=20):
+    """Add white padding around an image."""
+    if len(img_array.shape) == 3:
+        # Color image
+        pad_color = [255, 255, 255]
+        padded = np.pad(img_array, 
+                       ((top, bottom), (left, right), (0, 0)), 
+                       mode='constant', 
+                       constant_values=255)
+    else:
+        # Grayscale image
+        padded = np.pad(img_array, 
+                       ((top, bottom), (left, right)), 
+                       mode='constant', 
+                       constant_values=255)
+    
+    return padded
+
+def clean_exercise_image(img_array):
+    """Clean up the exercise image to remove artifacts and noise."""
+    if len(img_array.shape) == 3:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_array.copy()
+    
+    # Remove small noise
+    kernel = np.ones((2, 2), np.uint8)
+    cleaned = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+    
+    # Convert back to original format
+    if len(img_array.shape) == 3:
+        cleaned_rgb = cv2.cvtColor(cleaned, cv2.COLOR_GRAY2RGB)
+        return cleaned_rgb
+    else:
+        return cleaned
+
+def extract_exercises_visual(img_array, output_dir, page_num):
+    """Fallback visual detection method when text detection fails."""
+    if len(img_array.shape) == 3:
+        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    else:
+        gray = img_array
+    
+    # Detect staff lines
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 1))
+    horizontal_lines = cv2.morphologyEx(255 - gray, cv2.MORPH_OPEN, horizontal_kernel)
+    
+    # Find exercise boundaries
+    row_sums = np.sum(horizontal_lines, axis=1)
+    smoothed = gaussian_filter1d(row_sums, sigma=5)
+    
+    # Find peaks representing staff groups
+    peaks, _ = find_peaks(smoothed, 
+                         height=np.max(smoothed) * 0.2, 
+                         distance=150,
+                         width=20)
+    
+    # Group peaks into exercises
+    exercise_groups = []
+    if len(peaks) > 0:
+        current_group = [peaks[0]]
+        
+        for i in range(1, len(peaks)):
+            if peaks[i] - peaks[i-1] < 200:  # Same exercise
+                current_group.append(peaks[i])
+            else:  # New exercise
+                exercise_groups.append(current_group)
+                current_group = [peaks[i]]
+        
+        exercise_groups.append(current_group)
+    
+    # Extract each exercise group
+    for i, group in enumerate(exercise_groups):
+        top = max(0, min(group) - 100)
+        bottom = min(len(gray), max(group) + 100)
+        
+        cropped = img_array[top:bottom, :]
+        padded = add_white_padding(cropped, 40, 40, 30, 30)
+        
+        exercise_img = Image.fromarray(padded)
+        filename = f"exercise_visual_{i+1:03d}_page_{page_num + 1}.png"
+        filepath = os.path.join(output_dir, filename)
+        
+        exercise_img.save(filepath)
+        print(f"Saved (visual): {filename}")
 
 # Main execution
 if __name__ == "__main__":
     # Configuration
-    PDF_PATH = "/Users/floriandaefler/Desktop/sightreadle/354-Reading-Exercises-in-C-Position-Full-Score.pdf"  # Change this to your PDF file path
+    PDF_PATH = "/Users/floriandaefler/Desktop/sightreadle/354-Reading-Exercises-in-C-Position-Full-Score.pdf"
     OUTPUT_DIR = "extracted_exercises"
     
-    print("Starting PDF exercise extraction...")
+    print("Starting improved PDF exercise extraction...")
     print(f"Input PDF: {PDF_PATH}")
     print(f"Output directory: {OUTPUT_DIR}")
     print("-" * 50)
     
     try:
         extract_exercises_from_pdf(PDF_PATH, OUTPUT_DIR)
+        print("\n✅ Extraction completed successfully!")
+        print("\nThe extracted images should now work better with Audiveris because:")
+        print("• Proper padding prevents bleeding between exercises")
+        print("• Staff line detection improves boundary accuracy") 
+        print("• White space buffer zones eliminate artifacts")
+        print("• Higher resolution preserves musical notation quality")
+        
     except Exception as e:
-        print(f"Error with primary method: {e}")
-        print("Trying alternative method...")
-        try:
-            extract_exercises_alternative(PDF_PATH, OUTPUT_DIR)
-        except Exception as e2:
-            print(f"Error with alternative method: {e2}")
-            print("Please check that the required libraries are installed:")
-            print("pip install PyMuPDF pillow numpy scipy opencv-python")
-
-# Required libraries installation command:
-# pip install PyMuPDF pillow numpy scipy opencv-python
+        print(f"❌ Error: {e}")
+        print("\nMake sure you have all required libraries:")
+        print("pip install PyMuPDF pillow numpy scipy opencv-python")
