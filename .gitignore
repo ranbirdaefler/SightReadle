@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+venv/
+
+# Node
+node_modules/
+
+# Data we don't need in production
+data/embeddings/
+data/synthetic/
+data/augmentation/rir/
+data/augmentation/noise/
+scmpa/data/raw/
+
+# Local dev files
+.env.local
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Daily scores (generated at runtime)
+data/daily_scores/
+
+# WAV files (replaced by MP3)
+public/audio/segments/*.wav
+
+# Temp files
+data/cache/
+scmpa/data/cache/
+
+# Old exercise/music source files (not needed in prod)
+extracted_exercises/
+musicxml/
+music_ex/
+
+# Dev/training artifacts not needed in prod
+scmpa/scripts/
+scmpa/checkpoints/
+scmpa/results/
+scmpa/configs/
+scmpa/tests/
+
+# Test artifacts
+test_*.png
+test_*.wav
+start_dev.bat
+PROJECT_OVERVIEW.md
