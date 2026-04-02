@@ -251,6 +251,65 @@ app.get('/api/scoring/health', async (req, res) => {
     }
 });
 
+// DEBUG — REMOVE AFTER FIXING DEPLOYMENT
+app.get('/debug/files', (req, res) => {
+    const results = {
+        cwd: process.cwd(),
+        dirname: __dirname,
+    };
+
+    const checks = [
+        'data',
+        'data/segments',
+        'data/segments/musicxml',
+        'data/segments/midi',
+        'data/segments/manifest.json',
+        'public',
+        'public/audio',
+        'public/audio/segments',
+        'server',
+        'src',
+    ];
+
+    results.paths = {};
+    for (const p of checks) {
+        const fullPath = path.join(__dirname, p);
+        const entry = {
+            exists: fs.existsSync(fullPath),
+            fullPath: fullPath,
+        };
+
+        if (entry.exists) {
+            const stat = fs.statSync(fullPath);
+            entry.isDirectory = stat.isDirectory();
+            entry.isFile = stat.isFile();
+
+            if (stat.isDirectory()) {
+                const files = fs.readdirSync(fullPath);
+                entry.totalFiles = files.length;
+                entry.firstFiles = files.slice(0, 10);
+            }
+
+            if (stat.isFile()) {
+                entry.sizeBytes = stat.size;
+            }
+        }
+
+        results.paths[p] = entry;
+    }
+
+    try {
+        results.rootContents = fs.readdirSync(__dirname);
+    } catch (e) {
+        results.rootContents = `Error: ${e.message}`;
+    }
+
+    results.note = "If musicxml directory exists but 404s, the express.static path is wrong.";
+
+    res.json(results);
+});
+// END DEBUG
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
