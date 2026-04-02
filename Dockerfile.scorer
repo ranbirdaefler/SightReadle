@@ -5,7 +5,9 @@ WORKDIR /app/scmpa
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     fluidsynth \
+    libfluidsynth3 \
     libsndfile1 \
+    libsndfile1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY scmpa/requirements.txt ./requirements.txt

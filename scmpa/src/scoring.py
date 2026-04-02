@@ -305,17 +305,19 @@ def compute_rhythm_score(matched_pairs: list) -> float:
             expected_iois.append(e_ioi)
             detected_iois.append(d_ioi)
 
-    if len(expected_iois) < 2:
+    if len(expected_iois) < 2 or len(detected_iois) < 2:
         return 0.85
 
-    e_median = np.median(expected_iois)
-    d_median = np.median(detected_iois)
+    e_arr = np.array(expected_iois)
+    d_arr = np.array(detected_iois)
+    e_median = float(np.median(e_arr))
+    d_median = float(np.median(d_arr))
 
     if e_median < 0.01 or d_median < 0.01:
         return 0.85
 
-    e_ratios = np.array(expected_iois) / e_median
-    d_ratios = np.array(detected_iois) / d_median
+    e_ratios = e_arr / e_median
+    d_ratios = d_arr / d_median
 
     DEADZONE = 0.3
     ratio_errors = []
@@ -327,7 +329,7 @@ def compute_rhythm_score(matched_pairs: list) -> float:
     if not ratio_errors:
         return 0.85
 
-    mean_error = np.mean(ratio_errors)
+    mean_error = float(np.mean(ratio_errors))
     return float(np.clip(1.0 - mean_error / 0.7, 0, 1))
 
 
@@ -359,6 +361,15 @@ def score_performance(
     7. Compute calibrated quality scores
     8. Generate per-note feedback
     """
+    try:
+        return _score_performance_inner(audio_path, segment_midi_path)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return _empty_result()
+
+
+def _score_performance_inner(audio_path: str, segment_midi_path: str) -> ScoringResult:
     score_data = parse_midi(segment_midi_path)
     expected_notes = sorted(score_data.notes, key=lambda n: (n.onset, n.midi_pitch))
 
