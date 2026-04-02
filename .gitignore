@@ -35,9 +35,9 @@ data/cache/
 scmpa/data/cache/
 
 # Old exercise/music source files (not needed in prod)
-extracted_exercises/
-musicxml/
-music_ex/
+/extracted_exercises/
+/musicxml/
+/music_ex/
 
 # Dev/training artifacts not needed in prod
 scmpa/scripts/
