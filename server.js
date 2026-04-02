@@ -252,6 +252,16 @@ app.get('/api/scoring/health', async (req, res) => {
 });
 
 // DEBUG — REMOVE AFTER FIXING DEPLOYMENT
+app.get('/debug/scorer', async (req, res) => {
+    try {
+        const response = await fetch(`${SCORING_SERVICE_URL}/debug`);
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        res.json({ error: err.message, scoring_url: SCORING_SERVICE_URL });
+    }
+});
+
 app.get('/debug/files', (req, res) => {
     const results = {
         cwd: process.cwd(),

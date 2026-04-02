@@ -47,6 +47,32 @@ MANIFEST: dict = {}
 SEGMENT_LOOKUP: dict = {}
 
 
+@app.get("/debug")
+async def debug():
+    checks = {
+        "cwd": os.getcwd(),
+        "project_root": str(PROJECT_ROOT),
+        "file_location": str(Path(__file__).resolve()),
+        "manifest_exists": (PROJECT_ROOT / "data" / "segments" / "manifest.json").exists(),
+        "midi_dir_exists": (PROJECT_ROOT / "data" / "segments" / "midi").is_dir(),
+        "segments_loaded": len(SEGMENT_LOOKUP),
+    }
+    try:
+        checks["root_contents"] = os.listdir(str(PROJECT_ROOT))
+    except Exception as e:
+        checks["root_contents"] = str(e)
+    try:
+        checks["data_segments_contents"] = os.listdir(str(PROJECT_ROOT / "data" / "segments"))
+    except Exception as e:
+        checks["data_segments_contents"] = str(e)
+    if SEGMENT_LOOKUP:
+        first_seg = next(iter(SEGMENT_LOOKUP.values()))
+        first_midi = PROJECT_ROOT / first_seg["midi_path"]
+        checks["first_segment_midi_path"] = str(first_midi)
+        checks["first_segment_midi_exists"] = first_midi.exists()
+    return checks
+
+
 @app.on_event("startup")
 def load_manifest():
     global MANIFEST, SEGMENT_LOOKUP
