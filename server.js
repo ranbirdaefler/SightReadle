@@ -259,16 +259,21 @@ app.get('/debug/files', (req, res) => {
     };
 
     const checks = [
-        'data',
-        'data/segments',
-        'data/segments/musicxml',
-        'data/segments/midi',
-        'data/segments/manifest.json',
+        'scmpa',
+        'scmpa/data',
+        'scmpa/data/segments',
+        'scmpa/data/segments/musicxml',
+        'scmpa/data/segments/midi',
+        'scmpa/data/segments/manifest.json',
+        'scmpa/server',
+        'scmpa/server/scoring_service.py',
+        'scmpa/src',
+        'scmpa/src/scoring.py',
         'public',
         'public/audio',
         'public/audio/segments',
-        'server',
-        'src',
+        'data',
+        'data/segments',
     ];
 
     results.paths = {};
