@@ -262,6 +262,67 @@ app.get('/debug/scorer', async (req, res) => {
     }
 });
 
+app.get('/debug/tempo-test', async (req, res) => {
+    try {
+        const form = new FormData();
+        form.append('segment_id', '12_Variations_of_Twinkle_Twinkle_Little__4bar_000');
+        form.append('bpm', '80');
+
+        const response = await fetch(`${SCORING_SERVICE_URL}/render-tempo`, {
+            method: 'POST',
+            body: form,
+        });
+
+        const text = await response.text();
+        res.json({
+            status: response.status,
+            headers: Object.fromEntries(response.headers),
+            body: text.substring(0, 2000),
+        });
+    } catch (err) {
+        res.json({ error: err.message });
+    }
+});
+
+app.get('/debug/score-test', async (req, res) => {
+    try {
+        const form = new FormData();
+        form.append('segment_id', '12_Variations_of_Twinkle_Twinkle_Little__4bar_000');
+
+        const wavHeader = Buffer.alloc(44);
+        wavHeader.write('RIFF', 0);
+        wavHeader.writeUInt32LE(36 + 16000, 4);
+        wavHeader.write('WAVE', 8);
+        wavHeader.write('fmt ', 12);
+        wavHeader.writeUInt32LE(16, 16);
+        wavHeader.writeUInt16LE(1, 20);
+        wavHeader.writeUInt16LE(1, 22);
+        wavHeader.writeUInt32LE(16000, 24);
+        wavHeader.writeUInt32LE(16000, 28);
+        wavHeader.writeUInt16LE(1, 30);
+        wavHeader.writeUInt16LE(8, 32);
+        wavHeader.write('data', 36);
+        wavHeader.writeUInt32LE(16000, 40);
+        const silence = Buffer.alloc(16000, 128);
+        const testWav = Buffer.concat([wavHeader, silence]);
+
+        form.append('audio', testWav, { filename: 'test.wav', contentType: 'audio/wav' });
+
+        const response = await fetch(`${SCORING_SERVICE_URL}/score`, {
+            method: 'POST',
+            body: form,
+        });
+
+        const text = await response.text();
+        res.json({
+            status: response.status,
+            body: text.substring(0, 2000),
+        });
+    } catch (err) {
+        res.json({ error: err.message });
+    }
+});
+
 app.get('/debug/files', (req, res) => {
     const results = {
         cwd: process.cwd(),
