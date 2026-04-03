@@ -174,6 +174,3 @@ Set `SCORING_URL` on the Express service to point to the scorer's private Railwa
 
 Auto-deploys on every push to `main`.
 
-## License
-
-Sheet music sourced from public domain classical compositions via [michaelkravchuk.com](https://michaelkravchuk.com/).
