@@ -66,6 +66,40 @@ class SightReadle {
         }
     }
 
+    _getRecentPieces() {
+        try {
+            return JSON.parse(localStorage.getItem('sightreadle_recent_pieces') || '[]');
+        } catch { return []; }
+    }
+
+    _addRecentPiece(sourcePiece) {
+        let recent = this._getRecentPieces();
+        if (!recent.includes(sourcePiece)) {
+            recent.push(sourcePiece);
+        }
+        if (recent.length > 8) {
+            recent = [];
+        }
+        localStorage.setItem('sightreadle_recent_pieces', JSON.stringify(recent));
+    }
+
+    _getRecentSegments() {
+        try {
+            return JSON.parse(localStorage.getItem('sightreadle_recent_segments') || '[]');
+        } catch { return []; }
+    }
+
+    _addRecentSegment(segmentId) {
+        let recent = this._getRecentSegments();
+        if (!recent.includes(segmentId)) {
+            recent.push(segmentId);
+        }
+        if (recent.length > 50) {
+            recent = recent.slice(-30);
+        }
+        localStorage.setItem('sightreadle_recent_segments', JSON.stringify(recent));
+    }
+
     async loadRandom() {
         this.currentMode = 'random';
         this._dailyUserScore = null;
@@ -75,8 +109,16 @@ class SightReadle {
         document.getElementById('leaderboard-section').classList.add('hidden');
 
         try {
-            const res = await fetch('/api/random');
+            const recentPieces = encodeURIComponent(JSON.stringify(this._getRecentPieces()));
+            const recentSegs = encodeURIComponent(JSON.stringify(this._getRecentSegments()));
+            const res = await fetch(`/api/random?recent=${recentPieces}&recent_segs=${recentSegs}`);
             const data = await res.json();
+            if (data.source_piece) {
+                this._addRecentPiece(data.source_piece);
+            }
+            if (data.segment_id) {
+                this._addRecentSegment(data.segment_id);
+            }
             document.getElementById('challenge-title').textContent = 'Random Practice';
             this.displaySegment(data);
         } catch (err) {
@@ -215,9 +257,7 @@ class SightReadle {
         } catch (err) {
             console.error('Tempo render failed:', err);
             const audio = document.getElementById('reference-audio');
-            if (!audio.src || audio.src === window.location.href) {
-                audio.src = this.currentSegment.audio_url;
-            }
+            audio.src = this.currentSegment.audio_url;
         } finally {
             listenBtn.textContent = savedText;
             listenBtn.disabled = false;

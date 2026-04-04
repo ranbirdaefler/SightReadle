@@ -17,12 +17,21 @@ app.use('/musicxml/segments', express.static(path.join(__dirname, 'scmpa', 'data
 
 // Load segment manifest
 let SEGMENTS = [];
+const pieceGroups = {};
+let pieceNames = [];
 try {
     const manifestPath = path.join(__dirname, 'scmpa', 'data', 'segments', 'manifest.json');
     if (fs.existsSync(manifestPath)) {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
         SEGMENTS = manifest.segments || [];
-        console.log(`Loaded ${SEGMENTS.length} segments from manifest`);
+        for (const seg of SEGMENTS) {
+            if (!pieceGroups[seg.source_piece]) {
+                pieceGroups[seg.source_piece] = [];
+            }
+            pieceGroups[seg.source_piece].push(seg);
+        }
+        pieceNames = Object.keys(pieceGroups);
+        console.log(`Loaded ${SEGMENTS.length} segments from ${pieceNames.length} pieces`);
     }
 } catch (error) {
     console.error('Error loading segment manifest:', error.message);
@@ -43,23 +52,78 @@ function formatSegment(segment) {
     };
 }
 
-// ── Daily Challenge ──
+// ── Daily Challenge — cycles through pieces before repeating any ──
+function getDailySegment(dayNumber) {
+    const shuffledPieces = [...pieceNames];
+    let seed = 42;
+    function seededRand() {
+        seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF;
+        return (seed >>> 0) / 0xFFFFFFFF;
+    }
+    for (let i = shuffledPieces.length - 1; i > 0; i--) {
+        const j = Math.floor(seededRand() * (i + 1));
+        [shuffledPieces[i], shuffledPieces[j]] = [shuffledPieces[j], shuffledPieces[i]];
+    }
+
+    const nPieces = shuffledPieces.length;
+    const pieceIdx = dayNumber % nPieces;
+    const round = Math.floor(dayNumber / nPieces);
+
+    const piece = shuffledPieces[pieceIdx];
+    const pieceSegs = pieceGroups[piece];
+    const segIdx = round % pieceSegs.length;
+
+    return pieceSegs[segIdx];
+}
+
 app.get('/api/today', (req, res) => {
     if (SEGMENTS.length === 0) {
         return res.status(503).json({ error: 'No segments loaded' });
     }
     const daysSinceEpoch = Math.floor(Date.now() / 86400000);
-    const index = daysSinceEpoch % SEGMENTS.length;
-    res.json({ ...formatSegment(SEGMENTS[index]), mode: 'daily', challenge_number: daysSinceEpoch });
+    const segment = getDailySegment(daysSinceEpoch);
+    res.json({ ...formatSegment(segment), mode: 'daily', challenge_number: daysSinceEpoch });
 });
 
-// ── Random Practice ──
+// ── Random Practice — even distribution across pieces ──
 app.get('/api/random', (req, res) => {
     if (SEGMENTS.length === 0) {
         return res.status(503).json({ error: 'No segments loaded' });
     }
-    const index = Math.floor(Math.random() * SEGMENTS.length);
-    res.json({ ...formatSegment(SEGMENTS[index]), mode: 'random' });
+
+    let recentPieces = [];
+    if (req.query.recent) {
+        try {
+            recentPieces = JSON.parse(req.query.recent);
+        } catch (e) {
+            recentPieces = [];
+        }
+    }
+
+    let availablePieces = pieceNames.filter(p => !recentPieces.includes(p));
+    if (availablePieces.length === 0) {
+        availablePieces = pieceNames;
+    }
+
+    let recentSegments = [];
+    if (req.query.recent_segs) {
+        try {
+            recentSegments = JSON.parse(req.query.recent_segs);
+        } catch (e) {
+            recentSegments = [];
+        }
+    }
+
+    const piece = availablePieces[Math.floor(Math.random() * availablePieces.length)];
+    const pieceSegments = pieceGroups[piece];
+
+    let available = pieceSegments.filter(s => !recentSegments.includes(s.id));
+    if (available.length === 0) {
+        available = pieceSegments;
+    }
+    const segment = available[Math.floor(Math.random() * available.length)];
+
+    res.json({ ...formatSegment(segment), mode: 'random' });
 });
 
 // ── Stats ──
