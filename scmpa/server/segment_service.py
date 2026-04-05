@@ -195,8 +195,12 @@ class SegmentService:
 
         return None
 
-    def get_daily_segment(self, day_number: int, n_bars: int = 4) -> Optional[Dict]:
-        """Get a deterministic segment for the daily challenge."""
+    def get_daily_segment(self, day_number: int) -> Optional[Dict]:
+        """Get a deterministic segment for the daily challenge.
+        
+        Bar count varies 4-8 deterministically per day.
+        Cycles through all pieces across all difficulties.
+        """
         all_pieces = []
         for diff in ["easy", "intermediate", "advanced"]:
             for piece in self.pieces[diff]:
@@ -205,18 +209,23 @@ class SegmentService:
         if not all_pieces:
             return None
 
+        # Offset so today's challenge is different from old scheme
+        adjusted_day = day_number + 7
+
         rng = random.Random(42)
         shuffled = list(range(len(all_pieces)))
         rng.shuffle(shuffled)
 
-        piece_idx = shuffled[day_number % len(shuffled)]
+        piece_idx = shuffled[adjusted_day % len(shuffled)]
         difficulty, piece = all_pieces[piece_idx]
+
+        day_rng = random.Random(adjusted_day)
+        n_bars = day_rng.randint(4, 8)
 
         actual_bars = min(n_bars, piece["total_bars"])
         if actual_bars < 2:
             actual_bars = 2
 
-        day_rng = random.Random(day_number)
         max_start = max(0, piece["total_bars"] - actual_bars)
         start_bar = day_rng.randint(0, max_start)
         end_bar = start_bar + actual_bars
@@ -224,7 +233,7 @@ class SegmentService:
         note_count = sum(piece["bar_note_counts"][start_bar:end_bar])
 
         attempts = 0
-        while (note_count < 8 or note_count > 80) and attempts < 10:
+        while (note_count < 8 or note_count > 200) and attempts < 10:
             start_bar = day_rng.randint(0, max_start)
             end_bar = start_bar + actual_bars
             note_count = sum(piece["bar_note_counts"][start_bar:end_bar])
