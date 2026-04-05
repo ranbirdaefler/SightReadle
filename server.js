@@ -13,9 +13,54 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
 
-// ── Daily challenge (proxied to scoring service) ──
+// ── Admin auth ──
+function requireAdmin(req, res, next) {
+    const token = req.headers['x-admin-key'];
+    if (!token || token !== process.env.ADMIN_SECRET) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+}
+
+// Daily override — stored in memory (resets on deploy)
+let dailyOverride = null;
+
+// Persist override to disk so it survives Express restarts within same container
+const OVERRIDE_FILE = path.join(__dirname, 'data', 'daily_override.json');
+function loadDailyOverride() {
+    try {
+        if (fs.existsSync(OVERRIDE_FILE)) {
+            dailyOverride = JSON.parse(fs.readFileSync(OVERRIDE_FILE, 'utf8'));
+            console.log('Loaded daily override:', dailyOverride.source_piece || dailyOverride.id);
+        }
+    } catch (e) { dailyOverride = null; }
+}
+function saveDailyOverride() {
+    const dir = path.dirname(OVERRIDE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (dailyOverride) {
+        fs.writeFileSync(OVERRIDE_FILE, JSON.stringify(dailyOverride, null, 2));
+    } else {
+        if (fs.existsSync(OVERRIDE_FILE)) fs.unlinkSync(OVERRIDE_FILE);
+    }
+}
+loadDailyOverride();
+
+// ── Daily challenge (proxied to scoring service, with admin override) ──
 app.get('/api/today', async (req, res) => {
     try {
+        if (dailyOverride) {
+            const segment = { ...dailyOverride };
+            segment.musicxml_url = `/api/segment/musicxml/${segment.id}`;
+            segment.audio_url = null;
+            segment.segment_id = segment.id;
+            segment.mode = 'daily';
+            segment.overridden = true;
+            const daysSinceEpoch = Math.floor(Date.now() / 86400000);
+            segment.challenge_number = daysSinceEpoch;
+            return res.json(segment);
+        }
+
         const response = await fetch(`${SCORING_URL}/segment/daily`);
         if (!response.ok) {
             const err = await response.text();
@@ -253,6 +298,84 @@ app.get('/api/daily-leaderboard', (req, res) => {
         median_score: allScores.length ? allScores[Math.floor(allScores.length / 2)] : 0,
         top_score: allScores.length ? allScores[allScores.length - 1] : 0,
     });
+});
+
+// ── Admin endpoints ──
+
+app.get('/admin/pieces', requireAdmin, async (req, res) => {
+    try {
+        const response = await fetch(`${SCORING_URL}/segment/pieces`);
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        res.status(503).json({ error: 'Scoring service unavailable' });
+    }
+});
+
+app.get('/admin/daily', requireAdmin, (req, res) => {
+    if (dailyOverride) {
+        res.json({ active: true, override: dailyOverride });
+    } else {
+        res.json({ active: false, message: 'No override — using automatic daily rotation' });
+    }
+});
+
+app.post('/admin/daily', requireAdmin, express.json(), async (req, res) => {
+    const { difficulty, piece_name, start_bar, n_bars } = req.body;
+
+    if (!difficulty || !piece_name) {
+        return res.status(400).json({ error: 'Required: difficulty, piece_name. Optional: start_bar, n_bars' });
+    }
+
+    try {
+        const url = new URL(`${SCORING_URL}/segment/specific`);
+        url.searchParams.set('difficulty', difficulty);
+        url.searchParams.set('piece_name', piece_name);
+        if (start_bar !== undefined) url.searchParams.set('start_bar', start_bar.toString());
+        if (n_bars !== undefined) url.searchParams.set('n_bars', n_bars.toString());
+
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            return res.status(response.status).json({ error: err.error || 'Failed to generate segment' });
+        }
+
+        const segment = await response.json();
+        dailyOverride = segment;
+        saveDailyOverride();
+        res.json({ message: 'Daily challenge overridden', segment });
+    } catch (err) {
+        res.status(503).json({ error: 'Scoring service unavailable' });
+    }
+});
+
+app.delete('/admin/daily', requireAdmin, (req, res) => {
+    dailyOverride = null;
+    saveDailyOverride();
+    res.json({ message: 'Daily override cleared — back to automatic rotation' });
+});
+
+app.post('/admin/daily/random', requireAdmin, express.json(), async (req, res) => {
+    const { difficulty, n_bars } = req.body;
+
+    try {
+        const url = new URL(`${SCORING_URL}/segment/random`);
+        url.searchParams.set('difficulty', difficulty || 'intermediate');
+        url.searchParams.set('bars', (n_bars || 4).toString());
+
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            return res.status(response.status).json({ error: err.error || 'Failed to generate segment' });
+        }
+
+        const segment = await response.json();
+        dailyOverride = segment;
+        saveDailyOverride();
+        res.json({ message: 'Daily challenge set to random segment', segment });
+    } catch (err) {
+        res.status(503).json({ error: 'Scoring service unavailable' });
+    }
 });
 
 // ── Health ──
