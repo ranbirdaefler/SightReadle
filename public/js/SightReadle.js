@@ -17,8 +17,13 @@ class SightReadle {
         this._metronomeInterval = null;
         this._metronomeCtx = null;
 
+        this._currentDifficulty = 'intermediate';
+        this._currentBars = 4;
+
         this._bindModeButtons();
         this._bindControls();
+        this._bindDifficultyButtons();
+        this._bindBarButtons();
         this.loadDaily();
     }
 
@@ -26,8 +31,9 @@ class SightReadle {
 
     _bindModeButtons() {
         document.getElementById('daily-btn').addEventListener('click', () => this.loadDaily());
-        document.getElementById('random-btn').addEventListener('click', () => this.loadRandom());
-        document.getElementById('refresh-btn').addEventListener('click', () => this.loadRandom());
+        document.getElementById('random-btn').addEventListener('click', () => this.showDifficultySelect());
+        document.getElementById('refresh-btn').addEventListener('click', () => this.refreshRandom());
+        document.getElementById('reconfig-btn').addEventListener('click', () => this.showDifficultySelect());
     }
 
     _bindControls() {
@@ -40,12 +46,42 @@ class SightReadle {
         document.getElementById('metronome-btn').addEventListener('click', () => this._toggleMetronome());
     }
 
+    _bindDifficultyButtons() {
+        document.querySelectorAll('.diff-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const diff = btn.dataset.diff;
+                this._currentDifficulty = diff;
+                document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.showBarSelect();
+            });
+        });
+    }
+
+    _bindBarButtons() {
+        document.querySelectorAll('.bar-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const bars = parseInt(btn.dataset.bars, 10);
+                this._currentBars = bars;
+                document.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.loadRandomSegment(bars);
+            });
+        });
+    }
+
+    // ── Daily ──
+
     async loadDaily() {
         this.currentMode = 'daily';
         this._dailyUserScore = null;
         document.getElementById('daily-btn').classList.add('active');
         document.getElementById('random-btn').classList.remove('active');
         document.getElementById('refresh-btn').style.display = 'none';
+        document.getElementById('reconfig-btn').style.display = 'none';
+        document.getElementById('difficulty-selector').classList.add('hidden');
+        document.getElementById('bar-selector').classList.add('hidden');
+        document.getElementById('challenge-card').style.display = '';
 
         try {
             const res = await fetch('/api/today');
@@ -66,64 +102,88 @@ class SightReadle {
         }
     }
 
-    _getRecentPieces() {
-        try {
-            return JSON.parse(localStorage.getItem('sightreadle_recent_pieces') || '[]');
-        } catch { return []; }
-    }
+    // ── Random practice flow ──
 
-    _addRecentPiece(sourcePiece) {
-        let recent = this._getRecentPieces();
-        if (!recent.includes(sourcePiece)) {
-            recent.push(sourcePiece);
-        }
-        if (recent.length > 8) {
-            recent = [];
-        }
-        localStorage.setItem('sightreadle_recent_pieces', JSON.stringify(recent));
-    }
-
-    _getRecentSegments() {
-        try {
-            return JSON.parse(localStorage.getItem('sightreadle_recent_segments') || '[]');
-        } catch { return []; }
-    }
-
-    _addRecentSegment(segmentId) {
-        let recent = this._getRecentSegments();
-        if (!recent.includes(segmentId)) {
-            recent.push(segmentId);
-        }
-        if (recent.length > 50) {
-            recent = recent.slice(-30);
-        }
-        localStorage.setItem('sightreadle_recent_segments', JSON.stringify(recent));
-    }
-
-    async loadRandom() {
+    showDifficultySelect() {
         this.currentMode = 'random';
-        this._dailyUserScore = null;
         document.getElementById('daily-btn').classList.remove('active');
         document.getElementById('random-btn').classList.add('active');
+        document.getElementById('difficulty-selector').classList.remove('hidden');
+        document.getElementById('bar-selector').classList.add('hidden');
+        document.getElementById('challenge-card').style.display = 'none';
+        document.getElementById('leaderboard-section').classList.add('hidden');
+        document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    }
+
+    showBarSelect() {
+        document.getElementById('bar-selector').classList.remove('hidden');
+        document.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+    }
+
+    async loadRandomSegment(bars) {
+        this._currentBars = bars;
+        this._dailyUserScore = null;
+
+        document.getElementById('difficulty-selector').classList.add('hidden');
+        document.getElementById('bar-selector').classList.add('hidden');
+        document.getElementById('challenge-card').style.display = '';
+        document.getElementById('reconfig-btn').style.display = 'inline-block';
         document.getElementById('refresh-btn').style.display = 'inline-block';
         document.getElementById('leaderboard-section').classList.add('hidden');
+
+        const titleParts = [
+            'Random Practice',
+            this._currentDifficulty.charAt(0).toUpperCase() + this._currentDifficulty.slice(1),
+            `${bars} bars`,
+        ];
+        document.getElementById('challenge-title').textContent = titleParts.join(' \u2014 ');
 
         try {
             const recentPieces = encodeURIComponent(JSON.stringify(this._getRecentPieces()));
             const recentSegs = encodeURIComponent(JSON.stringify(this._getRecentSegments()));
-            const res = await fetch(`/api/random?recent=${recentPieces}&recent_segs=${recentSegs}`);
+            const url = `/api/random?difficulty=${this._currentDifficulty}&bars=${bars}&recent_pieces=${recentPieces}&recent_segs=${recentSegs}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Failed to get segment');
+            }
             const data = await res.json();
-            if (data.source_piece) {
-                this._addRecentPiece(data.source_piece);
-            }
-            if (data.segment_id) {
-                this._addRecentSegment(data.segment_id);
-            }
-            document.getElementById('challenge-title').textContent = 'Random Practice';
+            if (data.source_piece) this._addRecentPiece(data.source_piece);
+            if (data.segment_id || data.id) this._addRecentSegment(data.segment_id || data.id);
             this.displaySegment(data);
         } catch (err) {
-            this._showError('Failed to load segment');
+            this._showError(err.message || 'Failed to load segment');
         }
+    }
+
+    async refreshRandom() {
+        await this.loadRandomSegment(this._currentBars);
+    }
+
+    // ── Recent tracking (localStorage) ──
+
+    _getRecentPieces() {
+        try { return JSON.parse(localStorage.getItem('sightreadle_recent_pieces') || '[]'); }
+        catch { return []; }
+    }
+
+    _addRecentPiece(sourcePiece) {
+        let recent = this._getRecentPieces();
+        if (!recent.includes(sourcePiece)) recent.push(sourcePiece);
+        if (recent.length > 10) recent = [];
+        localStorage.setItem('sightreadle_recent_pieces', JSON.stringify(recent));
+    }
+
+    _getRecentSegments() {
+        try { return JSON.parse(localStorage.getItem('sightreadle_recent_segments') || '[]'); }
+        catch { return []; }
+    }
+
+    _addRecentSegment(segmentId) {
+        let recent = this._getRecentSegments();
+        if (!recent.includes(segmentId)) recent.push(segmentId);
+        if (recent.length > 50) recent = recent.slice(-30);
+        localStorage.setItem('sightreadle_recent_segments', JSON.stringify(recent));
     }
 
     // ── Segment display ──
@@ -133,12 +193,15 @@ class SightReadle {
 
         const pieceName = this._formatPieceName(segment.source_piece);
         const timeSig = segment.time_signature
-            ? `${segment.time_signature[0]}/${segment.time_signature[1]}`
-            : '4/4';
+            ? `${segment.time_signature[0]}/${segment.time_signature[1]}` : '4/4';
         const keySig = segment.key_signature || '';
+        const diff = segment.difficulty
+            ? segment.difficulty.charAt(0).toUpperCase() + segment.difficulty.slice(1) : '';
 
-        document.getElementById('challenge-meta').textContent =
-            `${pieceName} \u00B7 ${segment.n_bars} bars \u00B7 ${segment.n_notes} notes \u00B7 ${timeSig}${keySig ? ' \u00B7 ' + keySig : ''}`;
+        let metaText = `${pieceName} \u00B7 ${segment.n_bars} bars \u00B7 ${segment.n_notes} notes \u00B7 ${timeSig}`;
+        if (keySig) metaText += ` \u00B7 ${keySig}`;
+        if (diff) metaText += ` \u00B7 ${diff}`;
+        document.getElementById('challenge-meta').textContent = metaText;
 
         document.getElementById('results-section').classList.add('hidden');
         document.getElementById('record-btn').classList.remove('hidden');
@@ -149,7 +212,8 @@ class SightReadle {
             this._renderSheetMusic(segment.musicxml_url);
         }
 
-        this._loadReferenceAtTempo(segment.segment_id, this._selectedTempo);
+        const segId = segment.segment_id || segment.id;
+        this._loadReferenceAtTempo(segId, this._selectedTempo);
     }
 
     async _renderSheetMusic(musicxmlUrl) {
@@ -216,7 +280,8 @@ class SightReadle {
 
         clearTimeout(this._tempoDebounce);
         this._tempoDebounce = setTimeout(() => {
-            this._loadReferenceAtTempo(this.currentSegment.segment_id, bpm);
+            const segId = this.currentSegment.segment_id || this.currentSegment.id;
+            this._loadReferenceAtTempo(segId, bpm);
         }, 500);
     }
 
@@ -225,7 +290,8 @@ class SightReadle {
         document.getElementById('tempo-slider').value = defaultBpm;
         this._selectedTempo = defaultBpm;
         this._updateTempoDisplay(defaultBpm);
-        this._loadReferenceAtTempo(this.currentSegment.segment_id, defaultBpm);
+        const segId = this.currentSegment.segment_id || this.currentSegment.id;
+        this._loadReferenceAtTempo(segId, defaultBpm);
     }
 
     async _loadReferenceAtTempo(segmentId, bpm) {
@@ -256,8 +322,6 @@ class SightReadle {
             audio.src = url;
         } catch (err) {
             console.error('Tempo render failed:', err);
-            const audio = document.getElementById('reference-audio');
-            audio.src = this.currentSegment.audio_url;
         } finally {
             listenBtn.textContent = savedText;
             listenBtn.disabled = false;
@@ -343,9 +407,7 @@ class SightReadle {
     // ── Recording flow ──
 
     async startRecording() {
-        if (this.currentMode === 'daily' && this._dailyUserScore != null) {
-            return;
-        }
+        if (this.currentMode === 'daily' && this._dailyUserScore != null) return;
 
         if (this._metronomeOn) {
             this._stopMetronome();
@@ -435,7 +497,8 @@ class SightReadle {
     async _submitForScoring(audioBlob) {
         try {
             const formData = new FormData();
-            formData.append('segment_id', this.currentSegment.segment_id);
+            const segId = this.currentSegment.segment_id || this.currentSegment.id;
+            formData.append('segment_id', segId);
             formData.append('audio', audioBlob, 'recording.wav');
 
             const res = await fetch('/api/score', { method: 'POST', body: formData });
@@ -455,8 +518,6 @@ class SightReadle {
             console.error(err);
         }
     }
-
-    // ── Score inflation ──
 
     _inflateScore(raw) {
         return Math.pow(raw, 0.7);
@@ -638,8 +699,7 @@ class SightReadle {
         const maxCount = Math.max(...distribution.map(d => d.count), 1);
 
         const userBucket = userScore != null
-            ? Math.min(Math.floor(userScore * 10), 9)
-            : -1;
+            ? Math.min(Math.floor(userScore * 10), 9) : -1;
 
         ctx.clearRect(0, 0, w, h);
 
@@ -666,13 +726,6 @@ class SightReadle {
     }
 
     // ── Helpers ──
-
-    _midiToName(midi) {
-        if (midi < 0) return '\u2014';
-        const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-        const octave = Math.floor(midi / 12) - 1;
-        return `${names[midi % 12]}${octave}`;
-    }
 
     _formatPieceName(raw) {
         if (!raw) return 'Unknown Piece';

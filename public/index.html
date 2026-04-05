@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SightReadle - Daily Sight Reading Challenge</title>
-    <link rel="icon" type="image/png" href="/images/logo.png">
+    <link rel="icon" type="image/png" sizes="64x64" href="/images/logo.png">
     <link rel="stylesheet" href="/css/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.6/build/opensheetmusicdisplay.min.js"></script>
 </head>
@@ -12,7 +12,7 @@
     <div class="container">
         <header class="header">
             <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
-                <img src="/images/logo.png" alt="SightReadle" style="height: 40px; width: auto;">
+                <img src="/images/logo.png" alt="SightReadle" style="height: 64px; width: auto;">
                 <h1>SightReadle</h1>
             </div>
             <p>Daily sight-reading challenge for pianists</p>
@@ -21,6 +21,28 @@
         <div class="mode-selector">
             <button class="mode-btn active" id="daily-btn">Daily Challenge</button>
             <button class="mode-btn" id="random-btn">Random Practice</button>
+        </div>
+
+        <!-- Difficulty selector (hidden, shown when Random Practice clicked) -->
+        <div id="difficulty-selector" class="selection-panel hidden">
+            <p class="selection-label">Choose difficulty:</p>
+            <div class="selection-buttons">
+                <button class="diff-btn" data-diff="easy">Easy</button>
+                <button class="diff-btn" data-diff="intermediate">Intermediate</button>
+                <button class="diff-btn" data-diff="advanced">Advanced</button>
+            </div>
+        </div>
+
+        <!-- Bar count selector (hidden, shown after difficulty picked) -->
+        <div id="bar-selector" class="selection-panel hidden">
+            <p class="selection-label">How many bars?</p>
+            <div class="selection-buttons">
+                <button class="bar-btn" data-bars="4">4</button>
+                <button class="bar-btn" data-bars="5">5</button>
+                <button class="bar-btn" data-bars="6">6</button>
+                <button class="bar-btn" data-bars="7">7</button>
+                <button class="bar-btn" data-bars="8">8</button>
+            </div>
         </div>
 
         <main class="challenge-card" id="challenge-card">
@@ -46,6 +68,7 @@
             <div class="controls">
                 <button class="btn btn-secondary" id="listen-btn">Listen to Reference</button>
                 <button class="btn btn-record" id="record-btn">Start Recording</button>
+                <button class="btn btn-secondary" id="reconfig-btn" style="display:none">Change Practice Settings</button>
                 <button class="btn btn-secondary" id="refresh-btn" style="display:none">New Challenge</button>
             </div>
 

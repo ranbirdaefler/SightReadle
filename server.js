@@ -7,131 +7,89 @@ const fetch = require('node-fetch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SCORING_SERVICE_URL = process.env.SCORING_URL || 'http://localhost:8001';
+const SCORING_URL = process.env.SCORING_URL || 'http://localhost:8001';
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static('public'));
-app.use('/audio/segments', express.static('public/audio/segments'));
-app.use('/musicxml/segments', express.static(path.join(__dirname, 'scmpa', 'data', 'segments', 'musicxml')));
 
-// Load segment manifest
-let SEGMENTS = [];
-const pieceGroups = {};
-let pieceNames = [];
-try {
-    const manifestPath = path.join(__dirname, 'scmpa', 'data', 'segments', 'manifest.json');
-    if (fs.existsSync(manifestPath)) {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-        SEGMENTS = manifest.segments || [];
-        for (const seg of SEGMENTS) {
-            if (!pieceGroups[seg.source_piece]) {
-                pieceGroups[seg.source_piece] = [];
-            }
-            pieceGroups[seg.source_piece].push(seg);
+// ── Daily challenge (proxied to scoring service) ──
+app.get('/api/today', async (req, res) => {
+    try {
+        const response = await fetch(`${SCORING_URL}/segment/daily`);
+        if (!response.ok) {
+            const err = await response.text();
+            console.error('Daily segment error:', err);
+            return res.status(response.status).json({ error: 'Failed to get daily challenge' });
         }
-        pieceNames = Object.keys(pieceGroups);
-        console.log(`Loaded ${SEGMENTS.length} segments from ${pieceNames.length} pieces`);
+        const segment = await response.json();
+        segment.musicxml_url = `/api/segment/musicxml/${segment.id}`;
+        segment.audio_url = null;
+        segment.segment_id = segment.id;
+        segment.mode = 'daily';
+        res.json(segment);
+    } catch (err) {
+        console.error('Daily segment error:', err.message);
+        res.status(503).json({ error: 'Scoring service unavailable' });
     }
-} catch (error) {
-    console.error('Error loading segment manifest:', error.message);
-}
-
-function formatSegment(segment) {
-    return {
-        segment_id: segment.id,
-        source_piece: segment.source_piece,
-        n_bars: segment.n_bars,
-        n_notes: segment.n_notes,
-        tempo: segment.tempo,
-        time_signature: segment.time_signature,
-        key_signature: segment.key_signature,
-        duration_sec: segment.duration_sec,
-        musicxml_url: `/musicxml/segments/${segment.id}.musicxml`,
-        audio_url: `/audio/segments/${segment.id}.mp3`,
-    };
-}
-
-// ── Daily Challenge — cycles through pieces before repeating any ──
-function getDailySegment(dayNumber) {
-    const shuffledPieces = [...pieceNames];
-    let seed = 42;
-    function seededRand() {
-        seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF;
-        return (seed >>> 0) / 0xFFFFFFFF;
-    }
-    for (let i = shuffledPieces.length - 1; i > 0; i--) {
-        const j = Math.floor(seededRand() * (i + 1));
-        [shuffledPieces[i], shuffledPieces[j]] = [shuffledPieces[j], shuffledPieces[i]];
-    }
-
-    const nPieces = shuffledPieces.length;
-    const pieceIdx = dayNumber % nPieces;
-    const round = Math.floor(dayNumber / nPieces);
-
-    const piece = shuffledPieces[pieceIdx];
-    const pieceSegs = pieceGroups[piece];
-    const segIdx = round % pieceSegs.length;
-
-    return pieceSegs[segIdx];
-}
-
-app.get('/api/today', (req, res) => {
-    if (SEGMENTS.length === 0) {
-        return res.status(503).json({ error: 'No segments loaded' });
-    }
-    const daysSinceEpoch = Math.floor(Date.now() / 86400000);
-    const segment = getDailySegment(daysSinceEpoch);
-    res.json({ ...formatSegment(segment), mode: 'daily', challenge_number: daysSinceEpoch });
 });
 
-// ── Random Practice — even distribution across pieces ──
-app.get('/api/random', (req, res) => {
-    if (SEGMENTS.length === 0) {
-        return res.status(503).json({ error: 'No segments loaded' });
-    }
+// ── Random practice with difficulty and bar count ──
+app.get('/api/random', async (req, res) => {
+    try {
+        const difficulty = req.query.difficulty || 'intermediate';
+        const bars = req.query.bars || '4';
+        const recentPieces = req.query.recent_pieces || '';
+        const recentSegs = req.query.recent_segs || '';
 
-    let recentPieces = [];
-    if (req.query.recent) {
-        try {
-            recentPieces = JSON.parse(req.query.recent);
-        } catch (e) {
-            recentPieces = [];
+        const url = new URL(`${SCORING_URL}/segment/random`);
+        url.searchParams.set('difficulty', difficulty);
+        url.searchParams.set('bars', bars);
+        if (recentPieces) url.searchParams.set('recent_pieces', recentPieces);
+        if (recentSegs) url.searchParams.set('recent_segs', recentSegs);
+
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+            const err = await response.text();
+            console.error('Random segment error:', err);
+            return res.status(response.status).json({ error: 'Failed to get random segment' });
         }
+        const segment = await response.json();
+        segment.musicxml_url = `/api/segment/musicxml/${segment.id}`;
+        segment.audio_url = null;
+        segment.segment_id = segment.id;
+        segment.mode = 'random';
+        res.json(segment);
+    } catch (err) {
+        console.error('Random segment error:', err.message);
+        res.status(503).json({ error: 'Scoring service unavailable' });
     }
-
-    let availablePieces = pieceNames.filter(p => !recentPieces.includes(p));
-    if (availablePieces.length === 0) {
-        availablePieces = pieceNames;
-    }
-
-    let recentSegments = [];
-    if (req.query.recent_segs) {
-        try {
-            recentSegments = JSON.parse(req.query.recent_segs);
-        } catch (e) {
-            recentSegments = [];
-        }
-    }
-
-    const piece = availablePieces[Math.floor(Math.random() * availablePieces.length)];
-    const pieceSegments = pieceGroups[piece];
-
-    let available = pieceSegments.filter(s => !recentSegments.includes(s.id));
-    if (available.length === 0) {
-        available = pieceSegments;
-    }
-    const segment = available[Math.floor(Math.random() * available.length)];
-
-    res.json({ ...formatSegment(segment), mode: 'random' });
 });
 
-// ── Stats ──
-app.get('/api/stats', (req, res) => {
-    res.json({
-        total_segments: SEGMENTS.length,
-        total_pieces: [...new Set(SEGMENTS.map(s => s.source_piece))].length,
-    });
+// ── Difficulty info ──
+app.get('/api/difficulties', async (req, res) => {
+    try {
+        const response = await fetch(`${SCORING_URL}/segment/difficulties`);
+        const data = await response.json();
+        res.json(data);
+    } catch (err) {
+        res.status(503).json({ error: 'Scoring service unavailable' });
+    }
+});
+
+// ── Proxy MusicXML from scoring service cache ──
+app.get('/api/segment/musicxml/:id', async (req, res) => {
+    try {
+        const response = await fetch(`${SCORING_URL}/segment/musicxml/${req.params.id}`);
+        if (!response.ok) {
+            return res.status(404).json({ error: 'Segment not found' });
+        }
+        const text = await response.text();
+        res.set('Content-Type', 'application/xml');
+        res.send(text);
+    } catch (err) {
+        res.status(503).json({ error: 'Failed to get segment' });
+    }
 });
 
 // ── Scoring proxy ──
@@ -144,7 +102,7 @@ app.post('/api/score', upload.single('audio'), async (req, res) => {
         form.append('segment_id', req.body.segment_id);
         form.append('audio', req.file.buffer, { filename: 'recording.wav', contentType: 'audio/wav' });
 
-        const response = await fetch(`${SCORING_SERVICE_URL}/score`, { method: 'POST', body: form });
+        const response = await fetch(`${SCORING_URL}/score`, { method: 'POST', body: form });
         if (!response.ok) {
             const error = await response.text();
             console.error('Scoring service error:', error);
@@ -165,7 +123,7 @@ app.post('/api/render-tempo', upload.none(), async (req, res) => {
         form.append('segment_id', req.body.segment_id);
         form.append('bpm', req.body.bpm.toString());
 
-        const response = await fetch(`${SCORING_SERVICE_URL}/render-tempo`, {
+        const response = await fetch(`${SCORING_URL}/render-tempo`, {
             method: 'POST', body: form, headers: form.getHeaders(),
         });
         if (!response.ok) {
@@ -182,7 +140,7 @@ app.post('/api/render-tempo', upload.none(), async (req, res) => {
     }
 });
 
-// ── Seeded Leaderboard — flip to false when you have 50+ real daily players ──
+// ── Seeded Leaderboard ──
 const SEED_FAKE_SCORES = true;
 
 function generateFakeScores(dateString) {
@@ -191,32 +149,26 @@ function generateFakeScores(dateString) {
         seed = ((seed << 5) - seed) + dateString.charCodeAt(i);
         seed = seed & seed;
     }
-
     function rand() {
         seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF;
         return (seed >>> 0) / 0xFFFFFFFF;
     }
-
     const dailyMean = 0.55 + rand() * 0.17;
     const stdDev = 0.14;
     const nPlayers = 35 + Math.floor(rand() * 40);
-
     const scores = [];
     for (let i = 0; i < nPlayers; i++) {
         const u1 = Math.max(rand(), 0.0001);
         const u2 = rand();
         const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
-
         let s = dailyMean + z * stdDev;
         s = Math.max(0.15, Math.min(0.98, s));
         s = Math.round(s * 1000) / 1000;
         scores.push(s);
     }
-
     return scores;
 }
 
-// ── Daily Leaderboard ──
 const SCORES_DIR = path.join(__dirname, 'data', 'daily_scores');
 if (!fs.existsSync(SCORES_DIR)) {
     fs.mkdirSync(SCORES_DIR, { recursive: true });
@@ -286,7 +238,6 @@ app.post('/api/daily-score', express.json(), (req, res) => {
     });
 });
 
-// ── Daily Leaderboard (read-only, for histogram before playing) ──
 app.get('/api/daily-leaderboard', (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const dayScores = loadDayScores(today);
@@ -304,10 +255,10 @@ app.get('/api/daily-leaderboard', (req, res) => {
     });
 });
 
-// ── Scoring health ──
+// ── Health ──
 app.get('/api/scoring/health', async (req, res) => {
     try {
-        const response = await fetch(`${SCORING_SERVICE_URL}/health`);
+        const response = await fetch(`${SCORING_URL}/health`);
         const data = await response.json();
         res.json(data);
     } catch (err) {
@@ -315,140 +266,15 @@ app.get('/api/scoring/health', async (req, res) => {
     }
 });
 
-// DEBUG — REMOVE AFTER FIXING DEPLOYMENT
 app.get('/debug/scorer', async (req, res) => {
     try {
-        const response = await fetch(`${SCORING_SERVICE_URL}/debug`);
+        const response = await fetch(`${SCORING_URL}/debug`);
         const data = await response.json();
         res.json(data);
     } catch (err) {
-        res.json({ error: err.message, scoring_url: SCORING_SERVICE_URL });
+        res.json({ error: err.message, scoring_url: SCORING_URL });
     }
 });
-
-app.get('/debug/tempo-test', async (req, res) => {
-    try {
-        const form = new FormData();
-        form.append('segment_id', '12_Variations_of_Twinkle_Twinkle_Little__4bar_000');
-        form.append('bpm', '80');
-
-        const response = await fetch(`${SCORING_SERVICE_URL}/render-tempo`, {
-            method: 'POST',
-            body: form,
-        });
-
-        const text = await response.text();
-        res.json({
-            status: response.status,
-            headers: Object.fromEntries(response.headers),
-            body: text.substring(0, 2000),
-        });
-    } catch (err) {
-        res.json({ error: err.message });
-    }
-});
-
-app.get('/debug/score-test', async (req, res) => {
-    try {
-        const form = new FormData();
-        form.append('segment_id', '12_Variations_of_Twinkle_Twinkle_Little__4bar_000');
-
-        const wavHeader = Buffer.alloc(44);
-        wavHeader.write('RIFF', 0);
-        wavHeader.writeUInt32LE(36 + 16000, 4);
-        wavHeader.write('WAVE', 8);
-        wavHeader.write('fmt ', 12);
-        wavHeader.writeUInt32LE(16, 16);
-        wavHeader.writeUInt16LE(1, 20);
-        wavHeader.writeUInt16LE(1, 22);
-        wavHeader.writeUInt32LE(16000, 24);
-        wavHeader.writeUInt32LE(16000, 28);
-        wavHeader.writeUInt16LE(1, 30);
-        wavHeader.writeUInt16LE(8, 32);
-        wavHeader.write('data', 36);
-        wavHeader.writeUInt32LE(16000, 40);
-        const silence = Buffer.alloc(16000, 128);
-        const testWav = Buffer.concat([wavHeader, silence]);
-
-        form.append('audio', testWav, { filename: 'test.wav', contentType: 'audio/wav' });
-
-        const response = await fetch(`${SCORING_SERVICE_URL}/score`, {
-            method: 'POST',
-            body: form,
-        });
-
-        const text = await response.text();
-        res.json({
-            status: response.status,
-            body: text.substring(0, 2000),
-        });
-    } catch (err) {
-        res.json({ error: err.message });
-    }
-});
-
-app.get('/debug/files', (req, res) => {
-    const results = {
-        cwd: process.cwd(),
-        dirname: __dirname,
-    };
-
-    const checks = [
-        'scmpa',
-        'scmpa/data',
-        'scmpa/data/segments',
-        'scmpa/data/segments/musicxml',
-        'scmpa/data/segments/midi',
-        'scmpa/data/segments/manifest.json',
-        'scmpa/server',
-        'scmpa/server/scoring_service.py',
-        'scmpa/src',
-        'scmpa/src/scoring.py',
-        'public',
-        'public/audio',
-        'public/audio/segments',
-        'data',
-        'data/segments',
-    ];
-
-    results.paths = {};
-    for (const p of checks) {
-        const fullPath = path.join(__dirname, p);
-        const entry = {
-            exists: fs.existsSync(fullPath),
-            fullPath: fullPath,
-        };
-
-        if (entry.exists) {
-            const stat = fs.statSync(fullPath);
-            entry.isDirectory = stat.isDirectory();
-            entry.isFile = stat.isFile();
-
-            if (stat.isDirectory()) {
-                const files = fs.readdirSync(fullPath);
-                entry.totalFiles = files.length;
-                entry.firstFiles = files.slice(0, 10);
-            }
-
-            if (stat.isFile()) {
-                entry.sizeBytes = stat.size;
-            }
-        }
-
-        results.paths[p] = entry;
-    }
-
-    try {
-        results.rootContents = fs.readdirSync(__dirname);
-    } catch (e) {
-        results.rootContents = `Error: ${e.message}`;
-    }
-
-    results.note = "If musicxml directory exists but 404s, the express.static path is wrong.";
-
-    res.json(results);
-});
-// END DEBUG
 
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -456,6 +282,5 @@ app.get('/', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`SightReadle server running on port ${PORT}`);
-    console.log(`Segments loaded: ${SEGMENTS.length}`);
-    console.log(`Scoring service expected at: ${SCORING_SERVICE_URL}`);
+    console.log(`Scoring service: ${SCORING_URL}`);
 });

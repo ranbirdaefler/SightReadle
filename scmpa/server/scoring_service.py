@@ -1,12 +1,7 @@
-"""FastAPI scoring service for SightReadle — basic-pitch transcription pipeline.
+"""FastAPI scoring service for SightReadle.
 
-Accepts audio + segment_id, transcribes with basic-pitch, compares to
-ground truth MIDI via Hungarian matching, returns quality scores and
-per-note feedback.
-
-Endpoints:
-    POST /score   — multipart form: segment_id + audio file
-    GET  /health  — service health check
+Handles on-the-fly segmentation, audio transcription with basic-pitch,
+and performance scoring.
 
 Usage:
     cd scmpa/
@@ -19,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import mido
@@ -26,8 +22,7 @@ import pretty_midi
 import soundfile as sf
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from starlette.background import BackgroundTask
+from fastapi.responses import FileResponse, JSONResponse
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -43,74 +38,112 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MANIFEST: dict = {}
-SEGMENT_LOOKUP: dict = {}
-
-
-@app.get("/debug")
-async def debug():
-    checks = {
-        "cwd": os.getcwd(),
-        "project_root": str(PROJECT_ROOT),
-        "file_location": str(Path(__file__).resolve()),
-        "manifest_exists": (PROJECT_ROOT / "data" / "segments" / "manifest.json").exists(),
-        "midi_dir_exists": (PROJECT_ROOT / "data" / "segments" / "midi").is_dir(),
-        "segments_loaded": len(SEGMENT_LOOKUP),
-    }
-    try:
-        checks["root_contents"] = os.listdir(str(PROJECT_ROOT))
-    except Exception as e:
-        checks["root_contents"] = str(e)
-    try:
-        checks["data_segments_contents"] = os.listdir(str(PROJECT_ROOT / "data" / "segments"))
-    except Exception as e:
-        checks["data_segments_contents"] = str(e)
-    if SEGMENT_LOOKUP:
-        first_seg = next(iter(SEGMENT_LOOKUP.values()))
-        first_midi = PROJECT_ROOT / first_seg["midi_path"]
-        checks["first_segment_midi_path"] = str(first_midi)
-        checks["first_segment_midi_exists"] = first_midi.exists()
-    return checks
-
-
-@app.on_event("startup")
-def load_manifest():
-    global MANIFEST, SEGMENT_LOOKUP
-    manifest_path = PROJECT_ROOT / "data" / "segments" / "manifest.json"
-    if manifest_path.exists():
-        with open(manifest_path, "r") as f:
-            MANIFEST = json.load(f)
-        SEGMENT_LOOKUP = {s["id"]: s for s in MANIFEST.get("segments", [])}
-        print(f"Loaded {len(SEGMENT_LOOKUP)} segments from manifest")
-    else:
-        print(f"WARNING: manifest not found at {manifest_path}")
-
-
-def get_segment_midi_path(segment_id: str) -> str:
-    """Look up the MIDI path for a segment from the manifest."""
-    seg = SEGMENT_LOOKUP.get(segment_id)
-    if seg is None:
-        raise ValueError(f"Unknown segment: {segment_id}")
-    midi_path = PROJECT_ROOT / seg["midi_path"]
-    if not midi_path.exists():
-        raise FileNotFoundError(f"MIDI file not found: {midi_path}")
-    return str(midi_path)
-
+segment_service = None
 
 TEMPO_CACHE_DIR = PROJECT_ROOT / "data" / "cache" / "tempo_renders"
 TEMPO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-def _get_cached_render(segment_id: str, bpm: int) -> str | None:
+
+@app.on_event("startup")
+def startup():
+    global segment_service
+    from server.segment_service import SegmentService
+    source_dir = str(PROJECT_ROOT / "data" / "source_musicxml")
+    segment_service = SegmentService(source_dir=source_dir)
+
+
+# ── Segment endpoints ──
+
+@app.get("/segment/random")
+async def get_random_segment(
+    difficulty: str = "intermediate",
+    bars: int = 4,
+    recent_pieces: str = "",
+    recent_segs: str = "",
+):
+    if segment_service is None:
+        return JSONResponse(status_code=503, content={"error": "Service starting up"})
+    if bars < 2 or bars > 12:
+        return JSONResponse(status_code=400, content={"error": "bars must be 2-12"})
+    if difficulty not in ("easy", "intermediate", "advanced"):
+        return JSONResponse(status_code=400, content={"error": "invalid difficulty"})
+
+    exclude_pieces = []
+    if recent_pieces:
+        try:
+            exclude_pieces = json.loads(recent_pieces)
+        except Exception:
+            pass
+
+    exclude_segments = []
+    if recent_segs:
+        try:
+            exclude_segments = json.loads(recent_segs)
+        except Exception:
+            pass
+
+    segment = segment_service.get_random_segment(
+        difficulty, bars,
+        exclude_pieces=exclude_pieces,
+        exclude_segments=exclude_segments,
+    )
+    if not segment:
+        return JSONResponse(status_code=404, content={"error": "No valid segment found"})
+
+    return segment
+
+
+@app.get("/segment/daily")
+async def get_daily_segment():
+    if segment_service is None:
+        return JSONResponse(status_code=503, content={"error": "Service starting up"})
+    day_number = int(time.time() // 86400)
+    segment = segment_service.get_daily_segment(day_number)
+    if not segment:
+        return JSONResponse(status_code=404, content={"error": "No daily segment available"})
+    segment["challenge_number"] = day_number
+    return segment
+
+
+@app.get("/segment/difficulties")
+async def get_difficulties():
+    if segment_service is None:
+        return JSONResponse(status_code=503, content={"error": "Service starting up"})
+    return segment_service.get_available_difficulties()
+
+
+@app.get("/segment/musicxml/{segment_id}")
+async def get_segment_musicxml(segment_id: str):
+    if segment_service is None:
+        return JSONResponse(status_code=503, content={"error": "Service starting up"})
+    xml_path = segment_service.cache_dir / "musicxml" / f"{segment_id}.musicxml"
+    if not xml_path.exists():
+        return JSONResponse(status_code=404, content={"error": "Segment not found"})
+    return FileResponse(str(xml_path), media_type="application/xml")
+
+
+# ── MIDI path resolution ──
+
+def _resolve_midi_path(segment_id: str) -> str:
+    """Find the MIDI file for a segment — check on-the-fly cache first."""
+    if segment_service:
+        cached_midi = segment_service.cache_dir / "midi" / f"{segment_id}.mid"
+        if cached_midi.exists():
+            return str(cached_midi)
+    raise FileNotFoundError(f"MIDI file not found for segment: {segment_id}")
+
+
+# ── Tempo rendering ──
+
+def _get_cached_render(segment_id: str, bpm: int):
     cache_path = TEMPO_CACHE_DIR / f"{segment_id}_{bpm}.mp3"
     return str(cache_path) if cache_path.exists() else None
 
 
 def _wav_to_mp3(wav_path: str, mp3_path: str):
-    """Convert WAV to MP3 using ffmpeg."""
     subprocess.run(
         ["ffmpeg", "-y", "-i", wav_path, "-b:a", "128k", "-q:a", "2", mp3_path],
-        capture_output=True, timeout=15,
-        check=True,
+        capture_output=True, timeout=15, check=True,
     )
 
 
@@ -121,14 +154,11 @@ def _cache_render(segment_id: str, bpm: int, mp3_path: str) -> str:
 
 
 def _render_midi_at_tempo(midi_path: str, bpm: float, out_wav: str):
-    """Rewrite MIDI tempo then synthesise with FluidSynth via pretty_midi."""
     mid = mido.MidiFile(midi_path)
     tempo_us = mido.bpm2tempo(bpm)
     for track in mid.tracks:
         track[:] = [msg for msg in track if msg.type != "set_tempo"]
-    mid.tracks[0].insert(
-        0, mido.MetaMessage("set_tempo", tempo=tempo_us, time=0)
-    )
+    mid.tracks[0].insert(0, mido.MetaMessage("set_tempo", tempo=tempo_us, time=0))
 
     with tempfile.NamedTemporaryFile(suffix=".mid", delete=False) as tmp:
         mid.save(tmp.name)
@@ -147,11 +177,10 @@ async def render_at_tempo(
     segment_id: str = Form(...),
     bpm: float = Form(...),
 ):
-    """Re-render a segment's reference audio at a user-chosen tempo."""
     bpm_int = int(round(bpm))
     try:
-        midi_path = get_segment_midi_path(segment_id)
-    except (ValueError, FileNotFoundError) as e:
+        midi_path = _resolve_midi_path(segment_id)
+    except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
     cached = _get_cached_render(segment_id, bpm_int)
@@ -179,29 +208,15 @@ async def render_at_tempo(
     return FileResponse(cached_path, media_type="audio/mpeg")
 
 
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "pipeline": "basic-pitch-transcription",
-        "segments_loaded": len(SEGMENT_LOOKUP),
-    }
-
+# ── Scoring ──
 
 @app.post("/score")
-async def score(
+async def score_endpoint(
     segment_id: str = Form(...),
     audio: UploadFile = File(...),
 ):
-    """Score a user's performance.
-
-    Accepts multipart form data with segment_id and audio WAV file.
-    Returns JSON with scores, summary, and per-note feedback.
-    """
     try:
-        segment_midi = get_segment_midi_path(segment_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        midi_path = _resolve_midi_path(segment_id)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -211,8 +226,7 @@ async def score(
         temp_path = f.name
 
     try:
-        result = score_performance(temp_path, segment_midi)
-
+        result = score_performance(temp_path, midi_path)
         return {
             "scores": {
                 "rhythm": round(result.rhythm, 3),
@@ -229,17 +243,6 @@ async def score(
                 "total_expected": (result.n_correct + result.n_wrong_pitch
                                    + result.n_wrong_octave + result.n_missed),
             },
-            "notes": [
-                {
-                    "expected_pitch": n.score_pitch,
-                    "detected_pitch": n.detected_pitch,
-                    "expected_onset": round(n.expected_onset, 3) if n.expected_onset >= 0 else None,
-                    "actual_onset": round(n.actual_onset, 3) if n.actual_onset >= 0 else None,
-                    "timing_error": round(n.timing_error, 3) if n.status not in ("missed", "extra") else None,
-                    "status": n.status,
-                }
-                for n in result.note_details
-            ],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Scoring failed: {e}")
@@ -247,10 +250,27 @@ async def score(
         os.unlink(temp_path)
 
 
-@app.get("/segments")
-def list_segments():
-    """List all available segment IDs."""
+# ── Health ──
+
+@app.get("/health")
+def health():
+    pieces_loaded = 0
+    if segment_service:
+        pieces_loaded = sum(len(v) for v in segment_service.pieces.values())
     return {
-        "segments": sorted(SEGMENT_LOOKUP.keys()),
-        "count": len(SEGMENT_LOOKUP),
+        "status": "ready" if segment_service else "starting",
+        "pieces_loaded": pieces_loaded,
     }
+
+
+@app.get("/debug")
+async def debug():
+    checks = {
+        "cwd": os.getcwd(),
+        "project_root": str(PROJECT_ROOT),
+        "segment_service_ready": segment_service is not None,
+    }
+    if segment_service:
+        checks["difficulties"] = segment_service.get_available_difficulties()
+        checks["cache_dir"] = str(segment_service.cache_dir)
+    return checks

@@ -398,6 +398,10 @@ def _score_performance_inner(audio_path: str, segment_midi_path: str) -> Scoring
     rhythm_score = compute_rhythm_score(matched_pairs)
     completeness_score = compute_completeness_score(len(matched_pairs), total_expected)
 
+    print(f"[SCORING] matched={len(matched_pairs)}, missed={len(unmatched_expected)}, "
+          f"extra={len(unmatched_detected)}, pitch={pitch_score:.3f}, "
+          f"rhythm={rhythm_score:.3f}, completeness={completeness_score:.3f}", flush=True)
+
     overall = (0.45 * pitch_score +
                0.35 * completeness_score +
                0.20 * rhythm_score)
