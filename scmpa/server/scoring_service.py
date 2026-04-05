@@ -46,10 +46,16 @@ TEMPO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.on_event("startup")
 def startup():
-    global segment_service
-    from server.segment_service import SegmentService
-    source_dir = str(PROJECT_ROOT / "data" / "source_musicxml")
-    segment_service = SegmentService(source_dir=source_dir)
+    import threading
+
+    def _parse_in_background():
+        global segment_service
+        from server.segment_service import SegmentService
+        source_dir = str(PROJECT_ROOT / "data" / "source_musicxml")
+        segment_service = SegmentService(source_dir=source_dir)
+
+    t = threading.Thread(target=_parse_in_background, daemon=True)
+    t.start()
 
 
 # ── Segment endpoints ──
