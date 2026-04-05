@@ -24,9 +24,8 @@ scmpa/data/raw/
 .DS_Store
 Thumbs.db
 
-# Runtime data
+# Daily scores (generated at runtime)
 data/daily_scores/
-data/daily_override.json
 
 # WAV files (replaced by MP3)
 public/audio/segments/*.wav

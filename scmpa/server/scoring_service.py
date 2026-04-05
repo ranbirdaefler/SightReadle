@@ -46,16 +46,10 @@ TEMPO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 @app.on_event("startup")
 def startup():
-    import threading
-
-    def _parse_in_background():
-        global segment_service
-        from server.segment_service import SegmentService
-        source_dir = str(PROJECT_ROOT / "data" / "source_musicxml")
-        segment_service = SegmentService(source_dir=source_dir)
-
-    t = threading.Thread(target=_parse_in_background, daemon=True)
-    t.start()
+    global segment_service
+    from server.segment_service import SegmentService
+    source_dir = str(PROJECT_ROOT / "data" / "source_musicxml")
+    segment_service = SegmentService(source_dir=source_dir)
 
 
 # ── Segment endpoints ──
@@ -116,86 +110,6 @@ async def get_difficulties():
     if segment_service is None:
         return JSONResponse(status_code=503, content={"error": "Service starting up"})
     return segment_service.get_available_difficulties()
-
-
-@app.get("/segment/pieces")
-async def list_pieces():
-    """List all loaded pieces with bar counts and note totals."""
-    if segment_service is None:
-        return JSONResponse(status_code=503, content={"error": "Service starting up"})
-    result = {}
-    for diff, pieces in segment_service.pieces.items():
-        result[diff] = [
-            {
-                "name": p["name"],
-                "total_bars": p["total_bars"],
-                "total_notes": sum(p["bar_note_counts"]),
-                "tempo": p["tempo"],
-                "time_signature": p["time_signature"],
-                "key_signature": p["key_signature"],
-            }
-            for p in pieces
-        ]
-    return result
-
-
-@app.get("/segment/specific")
-async def get_specific_segment(
-    difficulty: str,
-    piece_name: str,
-    start_bar: int = 0,
-    n_bars: int = 4,
-):
-    """Extract a specific segment from a named piece."""
-    if segment_service is None:
-        return JSONResponse(status_code=503, content={"error": "Service starting up"})
-
-    pieces = segment_service.pieces.get(difficulty, [])
-    piece = next((p for p in pieces if p["name"] == piece_name), None)
-    if not piece:
-        return JSONResponse(status_code=404, content={"error": f"Piece '{piece_name}' not found in {difficulty}"})
-
-    actual_bars = min(n_bars, piece["total_bars"] - start_bar)
-    if actual_bars < 1:
-        return JSONResponse(status_code=400, content={"error": "Invalid bar range"})
-
-    end_bar = start_bar + actual_bars
-    note_count = sum(piece["bar_note_counts"][start_bar:end_bar])
-
-    import hashlib
-    seg_id = f"admin_{piece_name}_b{start_bar}-{end_bar}"
-    cache_key = hashlib.md5(seg_id.encode()).hexdigest()[:12]
-    seg_id_safe = f"admin_{cache_key}"
-
-    try:
-        segment_score = piece["score"].measures(start_bar + 1, end_bar)
-
-        xml_path = segment_service.cache_dir / "musicxml" / f"{seg_id_safe}.musicxml"
-        if not xml_path.exists():
-            segment_score.write('musicxml', fp=str(xml_path))
-
-        midi_path = segment_service.cache_dir / "midi" / f"{seg_id_safe}.mid"
-        if not midi_path.exists():
-            segment_score.write('midi', fp=str(midi_path))
-
-        bar_duration = (60.0 / piece["tempo"]) * piece["time_signature"][0]
-
-        return {
-            "id": seg_id_safe,
-            "source_piece": piece["name"],
-            "difficulty": difficulty,
-            "start_bar": start_bar,
-            "n_bars": actual_bars,
-            "n_notes": note_count,
-            "tempo": piece["tempo"],
-            "time_signature": piece["time_signature"],
-            "key_signature": piece["key_signature"],
-            "duration_sec": round(actual_bars * bar_duration, 2),
-            "musicxml_path": str(xml_path),
-            "midi_path": str(midi_path),
-        }
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Extraction failed: {e}"})
 
 
 @app.get("/segment/musicxml/{segment_id}")
